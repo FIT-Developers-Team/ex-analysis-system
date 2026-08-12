@@ -81,6 +81,8 @@ export interface PainPoint {
   confidence: "high" | "medium" | "low";
   evidence: string[];
   hypothesis: string;
+  source: "kpi" | "highlight" | "hybrid";
+  impactScore: number;
 }
 
 export interface Initiative {
@@ -94,6 +96,12 @@ export interface Initiative {
   measurement: string[];
   first14Days: string[];
   confidence: "high" | "medium" | "low";
+  priorityScore: number;
+  owner: string;
+  effort: "low" | "medium" | "high";
+  horizonDays: number;
+  linkedPainIds: string[];
+  evidence: string[];
 }
 
 export interface AnalysisPayload {
@@ -120,6 +128,7 @@ export interface AnalysisPayload {
   kpis: MetricReading[];
   trends: TrendSeries[];
   drivers: DriverSignal[];
+  decisionInsights: DecisionInsight[];
   painPoints: PainPoint[];
   initiatives: Initiative[];
   filters: {
@@ -130,6 +139,12 @@ export interface AnalysisPayload {
   };
   functionalModules: FunctionalModule[];
   capacityZones: CapacityZone[];
+  capacityHistory: CapacityHistoryPoint[];
+  volumeFlow: VolumeFlowPoint[];
+  fulfillmentFunnel: FlowStage[];
+  laborBalance: LaborBalancePoint[];
+  relationshipSignals: RelationshipSignal[];
+  riskMatrix: RiskMatrix;
   pivotRows: PivotMetricRow[];
   warehouseComparison: WarehouseComparisonRow[];
   metricCatalog: Array<{ division: string; role: string; metric: string; detail: string }>;
@@ -149,6 +164,81 @@ export interface CapacityZone {
   maximum: number | null;
   utilization: number | null;
   status: "critical" | "watch" | "controlled" | "unavailable";
+}
+
+export interface CapacityHistoryPoint {
+  date: string;
+  ambient: number | null;
+  chiller: number | null;
+  frozen: number | null;
+}
+
+export interface VolumeFlowPoint {
+  date: string;
+  inboundForecast: number | null;
+  inboundActual: number | null;
+  outboundForecast: number | null;
+  beforeCancel: number | null;
+  afterCancel: number | null;
+  rts: number | null;
+  hubReceived: number | null;
+}
+
+export interface FlowStage {
+  key: string;
+  label: string;
+  value: number | null;
+  conversionPct: number | null;
+  lossQty: number | null;
+  status: "critical" | "watch" | "controlled" | "unavailable";
+}
+
+export interface LaborBalancePoint {
+  date: string;
+  budgetMandays: number | null;
+  actualMandays: number | null;
+  productivity: number | null;
+  fulfillment: number | null;
+  cancelRate: number | null;
+}
+
+export interface RelationshipSignal {
+  id: string;
+  driverKey: string;
+  driverLabel: string;
+  outcomeKey: string;
+  outcomeLabel: string;
+  driverDomain: string;
+  outcomeDomain: string;
+  coefficient: number | null;
+  sampleSize: number;
+  lagDays: number;
+  strength: "strong" | "moderate" | "weak" | "insufficient";
+  confidence: "high" | "medium" | "low";
+  alignment: "supports" | "contradicts" | "inconclusive";
+  narrative: string;
+  decision: string;
+}
+
+export interface RiskMatrix {
+  weeks: string[];
+  rows: Array<{
+    domain: string;
+    values: Array<number | null>;
+    currentRisk: number | null;
+  }>;
+}
+
+export interface DecisionInsight {
+  id: string;
+  priority: "critical" | "high" | "medium";
+  domain: string;
+  title: string;
+  observation: string;
+  implication: string;
+  recommendedAction: string;
+  evidence: string[];
+  confidence: "high" | "medium" | "low";
 }
 
 export interface PivotMetricRow {

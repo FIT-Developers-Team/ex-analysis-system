@@ -10,6 +10,9 @@ NEXUS is a connected operations-intelligence dashboard for FIT quick-commerce wa
 - Provides current-vs-previous pivots by warehouse, function, role, period, and actual-data cut-off.
 - Benchmarks PGS, SRG, BIT, and STR on a common period and cut-off.
 - Includes a transparent scenario lab for volume, attendance, cancel, and process-efficiency changes.
+- Exposes six decision workspaces: Executive Cockpit, Demand & Flow, Relationship Lab, Scenario Studio, Initiative Portfolio, and Metric Registry.
+- Adds an 8-week cross-functional risk heatmap, 28-day volume truth, fulfillment loss tree, labor-economics view, zonal capacity history, and priority-versus-effort portfolio.
+- Quantifies 84-day Pearson associations with sample size, lag, confidence, and hypothesis alignment; these signals are explicitly non-causal.
 - Excludes spreadsheet formula errors and treats future dates as plan rather than actual performance.
 
 ## Data architecture
@@ -23,6 +26,8 @@ flowchart LR
     DQ --> SEM["Metric aliases and derived KPI layer"]
     SEM --> ENG["Operations analysis engine"]
     ENG --> UI["Next.js dashboard"]
+    ENG --> REL["Guarded relationship signals"]
+    ENG --> DEC["Decision brief and risk matrix"]
     ENG --> REC["Pain point and initiative engine"]
 ```
 

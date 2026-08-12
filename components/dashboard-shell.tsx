@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  AlertTriangle,
   Activity,
+  AlertTriangle,
+  ArrowRight,
   BarChart3,
   CalendarDays,
   CheckCircle2,
@@ -22,22 +23,38 @@ import {
   Sparkles,
   TableProperties,
   Target,
+  TrendingUp,
+  Users,
 } from "lucide-react";
-import { DriverChart, HealthGauge, TrendChart, WarehouseComparisonChart } from "@/components/analysis-charts";
+import {
+  CapacityHistoryChart,
+  DriverChart,
+  FulfillmentFunnelChart,
+  HealthGauge,
+  InitiativePriorityChart,
+  LaborBalanceChart,
+  RelationshipChart,
+  RiskHeatmapChart,
+  SimulationImpactChart,
+  TrendChart,
+  VolumeFlowChart,
+  WarehouseComparisonChart,
+} from "@/components/analysis-charts";
 import { KpiCard } from "@/components/kpi-card";
 import { OperationsFlow } from "@/components/operations-flow";
 import { runSimulation } from "@/lib/analysis/simulation";
-import type { AnalysisPayload, Period, SimulationInputs, WarehouseCode } from "@/lib/types";
+import type { AnalysisPayload, DecisionInsight, Period, SimulationInputs, WarehouseCode } from "@/lib/types";
 import { PRIORITY_WAREHOUSES } from "@/lib/types";
 
-type View = "overview" | "diagnostic" | "simulation" | "initiatives" | "data";
+type View = "overview" | "flow" | "relationships" | "simulation" | "initiatives" | "data";
 
 const nav = [
-  { id: "overview" as const, label: "Control tower", icon: LayoutDashboard },
-  { id: "diagnostic" as const, label: "Flow diagnostic", icon: GitBranch },
-  { id: "simulation" as const, label: "Scenario lab", icon: FlaskConical },
-  { id: "initiatives" as const, label: "Initiative engine", icon: Lightbulb },
-  { id: "data" as const, label: "Metric explorer", icon: Database },
+  { id: "overview" as const, label: "Executive cockpit", short: "Cockpit", icon: LayoutDashboard },
+  { id: "flow" as const, label: "Demand & flow", short: "Flow", icon: TrendingUp },
+  { id: "relationships" as const, label: "Relationship lab", short: "Relations", icon: GitBranch },
+  { id: "simulation" as const, label: "Scenario studio", short: "Scenario", icon: FlaskConical },
+  { id: "initiatives" as const, label: "Initiative portfolio", short: "Projects", icon: Lightbulb },
+  { id: "data" as const, label: "Metric registry", short: "Metrics", icon: Database },
 ];
 
 const periodLabels: Record<Period, string> = { daily: "Daily", weekly: "Weekly", monthly: "Monthly" };
@@ -75,204 +92,233 @@ function SectionHeader({ eyebrow, title, description, action }: { eyebrow: strin
   );
 }
 
-function Skeleton() {
+function PageIntro({ eyebrow, title, description, meta }: { eyebrow: string; title: string; description: string; meta: string }) {
   return (
-    <div className="loading-grid" aria-label="Memuat analisis">
-      <div className="skeleton skeleton--hero" />
-      <div className="skeleton" /><div className="skeleton" /><div className="skeleton" />
-      <div className="skeleton skeleton--wide" />
-    </div>
+    <header className="page-intro">
+      <div><span className="eyebrow">{eyebrow}</span><h1>{title}</h1><p>{description}</p></div>
+      <span className="page-intro__meta"><CalendarDays size={14} />{meta}</span>
+    </header>
   );
 }
 
-function ControlTower({ data }: { data: AnalysisPayload }) {
+function Skeleton() {
+  return <div className="loading-grid" aria-label="Memuat analisis"><div className="skeleton skeleton--hero" /><div className="skeleton" /><div className="skeleton" /><div className="skeleton" /><div className="skeleton skeleton--wide" /></div>;
+}
+
+function InsightCard({ insight, index }: { insight: DecisionInsight; index: number }) {
+  return (
+    <article className={`insight-card insight-card--${insight.priority}`}>
+      <header><span>0{index + 1}</span><div><small>{insight.domain}</small><h3>{insight.title}</h3></div><b>{insight.priority}</b></header>
+      <p>{insight.observation}</p>
+      <div className="insight-implication"><strong>Why it matters</strong><span>{insight.implication}</span></div>
+      <div className="insight-action"><ArrowRight size={15} /><span>{insight.recommendedAction}</span></div>
+      <footer><span>{insight.confidence} confidence</span><span>{insight.evidence.length} evidence points</span></footer>
+    </article>
+  );
+}
+
+function ExecutiveCockpit({ data, openInitiatives }: { data: AnalysisPayload; openInitiatives: () => void }) {
   const priority = data.kpis.filter((item) => ["forecast_accuracy", "productivity_attainment", "fulfillment_rate", "mandays_variance", "capacity_utilization", "cancel_rate"].includes(item.key));
   return (
     <>
-      <section className="intelligence-hero">
+      <section className="intelligence-hero intelligence-hero--executive">
         <div className="hero-copy">
           <span className={`status-label status-label--${data.health.status}`}><CircleDot size={13} />{data.health.headline}</span>
-          <h1>{data.context.warehouse} operations are <em>{data.health.status === "controlled" ? "in control" : "under pressure"}</em></h1>
+          <h1>{data.context.warehouse} operating system is <em>{data.health.status === "controlled" ? "in control" : "under pressure"}</em></h1>
           <p>{data.health.narrative}</p>
-          <div className="hero-meta">
-            <span><CalendarDays size={14} />{fmtDate(data.context.rangeStart)} — {fmtDate(data.context.rangeEnd)}</span>
-            <span><Database size={14} />{data.health.confidence}% analytical confidence</span>
-          </div>
+          <div className="hero-meta"><span><CalendarDays size={14} />{fmtDate(data.context.rangeStart)} — {fmtDate(data.context.rangeEnd)}</span><span><Database size={14} />{data.health.confidence}% analytical confidence</span></div>
         </div>
         <div className="health-gauge"><HealthGauge score={data.health.score} /></div>
       </section>
 
-      <section className="kpi-strip">
-        {priority.map((metric) => <KpiCard key={metric.key} metric={metric} />)}
+      <section className="kpi-strip">{priority.map((metric) => <KpiCard key={metric.key} metric={metric} />)}</section>
+
+      <section className="section-block">
+        <SectionHeader eyebrow="Decision brief" title="What the operating review should decide next" description="Prioritas dibentuk dari trade-off volume, mandays, SLA, capacity, cancel, dan inventory control—not a single KPI breach." />
+        <div className="insight-grid">{data.decisionInsights.slice(0, 3).map((insight, index) => <InsightCard insight={insight} index={index} key={insight.id} />)}</div>
+      </section>
+
+      <section className="split-grid split-grid--wide-left">
+        <div className="panel chart-panel">
+          <SectionHeader eyebrow="8-week control surface" title="Risk migrates across functions" description="Health score dibalik menjadi risk: semakin merah, semakin besar pressure pada minggu tersebut." />
+          <RiskHeatmapChart matrix={data.riskMatrix} />
+          <div className="chart-legend"><span><i className="legend-low" />Controlled</span><span><i className="legend-watch" />Watch</span><span><i className="legend-high" />High risk</span></div>
+        </div>
+        <div className="panel">
+          <SectionHeader eyebrow="Attention order" title="Current driver health" description="Skor di bawah 65 menjadi prioritas diagnostic." />
+          <DriverChart drivers={data.drivers} />
+        </div>
       </section>
 
       <section className="panel flow-panel">
-        <SectionHeader eyebrow="Connected operations core" title="One flow, shared consequences" description="Status setiap fungsi diturunkan dari KPI yang berkaitan—bukan dinilai sebagai silo." />
+        <SectionHeader eyebrow="Connected operations core" title="One flow, shared consequences" description="People dan planning menggerakkan inbound, inventory, outbound, dan fleet sebagai satu sistem." />
         <OperationsFlow modules={data.functionalModules} />
       </section>
 
       <section className="function-score-grid" aria-label="Functional operations health">
         {data.functionalModules.map((module) => (
           <article className={`function-score function-score--${module.status}`} key={module.division}>
-            <div><span>{module.division}</span><strong>{module.status === "unavailable" ? "—" : module.score}</strong></div>
-            <p>{module.headline}</p>
-            <div className="function-score__bar"><i style={{ width: `${module.score}%` }} /></div>
+            <div><span>{module.division}</span><strong>{module.status === "unavailable" ? "—" : module.score}</strong></div><p>{module.headline}</p><div className="function-score__bar"><i style={{ width: `${module.score}%` }} /></div>
           </article>
         ))}
       </section>
 
-      <section className="panel capacity-panel">
-        <SectionHeader eyebrow="Zonal capacity watch" title="Actual inventory versus physical maximum" description="Menggunakan latest available actual pada window aktif; warning 85% dan critical 92%." />
-        <div className="capacity-grid">
-          {data.capacityZones.map((zone) => (
-            <article className={`capacity-zone capacity-zone--${zone.status}`} key={zone.zone}>
-              <header><div><span>{zone.zone}</span><strong>{zone.utilization === null ? "—" : `${zone.utilization.toFixed(1)}%`}</strong></div><b>{zone.status}</b></header>
-              <div className="capacity-track"><i style={{ width: `${Math.min(100, zone.utilization ?? 0)}%` }} /></div>
-              <footer><span>Actual <b>{zone.actual?.toLocaleString("id-ID") ?? "—"}</b></span><span>Max <b>{zone.maximum?.toLocaleString("id-ID") ?? "—"}</b></span></footer>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="split-grid split-grid--wide-left">
+      <section className="split-grid">
         <div className="panel chart-panel">
-          <SectionHeader eyebrow="28-day signal" title="Movement across the operating system" description="Persentase harian · gaps menunjukkan data belum tersedia atau tidak valid." />
+          <SectionHeader eyebrow="28-day signal" title="Operating system movement" description="Gaps menandakan data belum tersedia atau invalid." />
           <TrendChart series={data.trends.slice(0, 4)} />
         </div>
-        <div className="panel">
-          <SectionHeader eyebrow="Attention order" title="Driver health" description="Skor di bawah 65 perlu tindakan terlebih dahulu." />
-          <DriverChart drivers={data.drivers} />
-        </div>
-      </section>
-
-      <section className="split-grid">
-        <div className="panel">
-          <SectionHeader eyebrow="Recurring pain" title="Patterns that keep coming back" />
-          <div className="pain-list">
-            {data.painPoints.length ? data.painPoints.slice(0, 3).map((pain) => (
-              <article className="pain-row" key={pain.id}>
-                <div className={`severity-mark severity-mark--${pain.severity}`} />
-                <div><div className="pain-row__title"><strong>{pain.title}</strong><span>{pain.recurrenceWeeks}/8 weeks</span></div><p>{pain.hypothesis}</p></div>
-                <ChevronRight size={17} />
-              </article>
-            )) : <div className="empty-state"><Info size={19} /><p>Belum ada pain point dengan evidence minimal dua minggu. Sistem tetap membuat validation initiative.</p></div>}
-          </div>
-        </div>
-        <div className="panel panel--ink">
-          <SectionHeader eyebrow="Next best action" title={data.initiatives[0]?.title ?? "Validate operating baseline"} />
-          <p className="initiative-lead">{data.initiatives[0]?.intervention}</p>
+        <div className="panel panel--ink portfolio-callout">
+          <SectionHeader eyebrow="Highest-priority project" title={data.initiatives[0]?.title ?? "Validate operating baseline"} />
+          <div className="portfolio-score"><strong>{data.initiatives[0]?.priorityScore ?? 0}</strong><span>priority<br/>score</span></div>
+          <p>{data.initiatives[0]?.intervention}</p>
           <div className="impact-box"><Sparkles size={18} /><div><span>Expected impact</span><strong>{data.initiatives[0]?.expectedImpact}</strong></div></div>
-          <button className="text-button" onClick={() => document.querySelector<HTMLButtonElement>('[data-view="initiatives"]')?.click()}>Open initiative brief <ChevronRight size={15} /></button>
+          <button className="text-button" onClick={openInitiatives}>Open project portfolio <ChevronRight size={15} /></button>
         </div>
       </section>
 
       <section className="panel comparison-panel">
-        <SectionHeader eyebrow="Network benchmark" title="PGS · SRG · BIT · STR side by side" description="Perbandingan memakai period dan cut-off yang sama agar ranking tidak bias oleh jendela waktu." />
+        <SectionHeader eyebrow="Network benchmark" title="PGS · SRG · BIT · STR on one cut-off" description="Period dan cut-off yang sama mencegah ranking bias akibat jendela waktu berbeda." />
         <div className="comparison-layout">
           <WarehouseComparisonChart rows={data.warehouseComparison} />
-          <div className="comparison-scoreboard">
-            {[...data.warehouseComparison].sort((a, b) => b.healthScore - a.healthScore).map((row, index) => (
-              <div key={row.warehouse}><span>#{index + 1}</span><strong>{row.warehouse}</strong><b>{row.healthScore}</b><small>{row.dataConfidence}% coverage</small></div>
-            ))}
-          </div>
+          <div className="comparison-scoreboard">{[...data.warehouseComparison].sort((a, b) => b.healthScore - a.healthScore).map((row, index) => <div key={row.warehouse}><span>#{index + 1}</span><strong>{row.warehouse}</strong><b>{row.healthScore}</b><small>{row.dataConfidence}% coverage</small></div>)}</div>
         </div>
       </section>
     </>
   );
 }
 
-function Diagnostic({ data }: { data: AnalysisPayload }) {
+function FlowIntelligence({ data }: { data: AnalysisPayload }) {
+  const [mode, setMode] = useState<"inbound" | "outbound">("outbound");
   return (
     <>
-      <SectionHeader eyebrow="Root-cause workspace" title="Follow the chain, not the symptom" description="Setiap temuan menampilkan recurrence, evidence, dan hipotesis yang perlu dibuktikan di floor." />
-      <section className="panel flow-panel"><OperationsFlow modules={data.functionalModules} /></section>
-      <section className="diagnostic-grid">
-        {data.painPoints.length ? data.painPoints.map((pain, index) => (
-          <article className="diagnostic-card" key={pain.id}>
-            <div className="diagnostic-card__index">0{index + 1}</div>
-            <div className="diagnostic-card__body">
-              <div className="tag-row"><span>{pain.domain}</span><span>{pain.recurrenceWeeks} of 8 weeks</span><span>{pain.confidence} confidence</span></div>
-              <h3>{pain.title}</h3>
-              <p>{pain.hypothesis}</p>
-              <div className="evidence-box"><strong>Observed evidence</strong>{pain.evidence.map((item) => <span key={item}>{item}</span>)}</div>
-            </div>
-          </article>
-        )) : <div className="panel empty-state"><Info size={20} /><p>Belum ada recurrent breach yang memenuhi threshold. Gunakan Metric Explorer untuk memeriksa coverage dan definisi.</p></div>}
+      <PageIntro eyebrow="Demand-to-service control" title="Follow every unit through the warehouse" description="Bandingkan forecast, actual, cancel, RTS, hub received, labor, dan zonal capacity dalam satu aliran keputusan." meta={`${periodLabels[data.context.period]} · ${fmtDate(data.context.rangeStart)} — ${fmtDate(data.context.rangeEnd)}`} />
+      <section className="panel chart-panel">
+        <SectionHeader eyebrow="28-day volume truth" title={mode === "outbound" ? "Forecast → request → RTS → hub" : "Forecast → actual inbound"} description="Actual goods menjadi basis productivity; forecast dipakai sebagai planning reference." action={<div className="segmented-control"><button className={mode === "inbound" ? "active" : ""} onClick={() => setMode("inbound")}>Inbound</button><button className={mode === "outbound" ? "active" : ""} onClick={() => setMode("outbound")}>Outbound</button></div>} />
+        <VolumeFlowChart points={data.volumeFlow} mode={mode} />
       </section>
-      <section className="panel">
-        <SectionHeader eyebrow="Guardrail matrix" title="Trade-offs the review must protect" />
-        <div className="guardrail-grid">
-          <div><strong>Volume ↓, MP tetap</strong><span>Productivity dapat turun tanpa process failure.</span></div>
-          <div><strong>MP ↑</strong><span>SLA seharusnya membaik; productivity per manday dapat terdilusi.</span></div>
-          <div><strong>Actual MD &lt; budget</strong><span>Savings hanya valid bila SLA dan productivity tetap sehat.</span></div>
-          <div><strong>Cancel ↑</strong><span>Harus dibuktikan dengan capacity/run-rate, bukan asumsi shortage.</span></div>
-          <div><strong>DCC memburuk</strong><span>Telusuri dampak ke SLOC, replenish, troubleshoot, dan picker.</span></div>
-          <div><strong>Capacity ≥ 92%</strong><span>Tambahan volume/MP berisiko congestion dan queue.</span></div>
+
+      <section className="split-grid split-grid--wide-left">
+        <div className="panel chart-panel">
+          <SectionHeader eyebrow="Fulfillment loss tree" title="Where outbound volume falls away" description="Step conversion membedakan demand variance, cancel, warehouse execution, dan downstream receipt." />
+          <FulfillmentFunnelChart stages={data.fulfillmentFunnel} />
+          <div className="funnel-stage-strip">{data.fulfillmentFunnel.slice(1).map((stage) => <div key={stage.key}><span>{stage.label}</span><strong>{stage.conversionPct === null ? "—" : `${stage.conversionPct.toFixed(1)}%`}</strong><small>{stage.lossQty === null ? "No comparable stage" : `${stage.lossQty.toLocaleString("id-ID")} qty step loss`}</small></div>)}</div>
         </div>
+        <div className="panel decision-sidebar">
+          <SectionHeader eyebrow="Flow decisions" title="Act on the constraint" />
+          {data.decisionInsights.filter((item) => ["Planning", "Outbound", "Labor economics"].includes(item.domain)).slice(0, 3).map((item) => <article key={item.id}><span>{item.domain}</span><strong>{item.title}</strong><p>{item.recommendedAction}</p></article>)}
+          {!data.decisionInsights.some((item) => ["Planning", "Outbound", "Labor economics"].includes(item.domain)) && <div className="empty-state"><CheckCircle2 size={18} /><p>Tidak ada flow breach besar pada cut aktif. Pertahankan guardrail dan pantau perubahan harian.</p></div>}
+        </div>
+      </section>
+
+      <section className="panel chart-panel">
+        <SectionHeader eyebrow="Labor economics" title="Budget mandays, actual mandays, and output per manday" description="Actual MD di bawah budget hanya dianggap saving bila productivity dan SLA tetap sehat." />
+        <LaborBalanceChart points={data.laborBalance} />
+      </section>
+
+      <section className="panel chart-panel">
+        <SectionHeader eyebrow="Zonal capacity" title="Ambient, chiller, and frozen operating envelope" description="Warning 85% dan critical 92%; nilai harian tidak diisi secara artifisial saat source kosong." />
+        <CapacityHistoryChart points={data.capacityHistory} />
+        <div className="capacity-grid capacity-grid--attached">{data.capacityZones.map((zone) => <article className={`capacity-zone capacity-zone--${zone.status}`} key={zone.zone}><header><div><span>{zone.zone}</span><strong>{zone.utilization === null ? "—" : `${zone.utilization.toFixed(1)}%`}</strong></div><b>{zone.status}</b></header><div className="capacity-track"><i style={{ width: `${Math.min(100, zone.utilization ?? 0)}%` }} /></div><footer><span>Actual <b>{zone.actual?.toLocaleString("id-ID") ?? "—"}</b></span><span>Max <b>{zone.maximum?.toLocaleString("id-ID") ?? "—"}</b></span></footer></article>)}</div>
       </section>
     </>
   );
 }
 
-function ScenarioLab({ data }: { data: AnalysisPayload }) {
+function RelationshipLab({ data }: { data: AnalysisPayload }) {
+  return (
+    <>
+      <PageIntro eyebrow="Cross-functional diagnostic" title="Separate association from operational truth" description="Hubungan 84 hari dipakai sebagai signal untuk investigasi, bukan klaim kausal. Sample size, lag, confidence, dan arah hipotesis selalu terlihat." meta={`84-day lookback · as of ${fmtDate(data.context.asOf)}`} />
+      <section className="split-grid split-grid--wide-left">
+        <div className="panel chart-panel">
+          <SectionHeader eyebrow="Association map" title="Which levers move with which outcomes" description="Koefisien Pearson r: biru mendukung arah hipotesis, emas berlawanan, abu-abu belum konklusif." />
+          <RelationshipChart signals={data.relationshipSignals} />
+        </div>
+        <div className="panel relationship-notice">
+          <Info size={20} />
+          <div><strong>How to use this page</strong><p>Mulai dari hubungan moderate/strong dengan sample memadai. Validasi lewat shift, weekday, volume band, dan floor observation sebelum membuat kebijakan.</p></div>
+          <div className="relationship-stats"><span><b>{data.relationshipSignals.filter((item) => item.strength === "strong").length}</b> strong</span><span><b>{data.relationshipSignals.filter((item) => item.alignment === "supports").length}</b> supports</span><span><b>{data.relationshipSignals.filter((item) => item.strength === "insufficient").length}</b> insufficient</span></div>
+        </div>
+      </section>
+
+      <section className="relationship-card-grid">
+        {data.relationshipSignals.map((signal) => (
+          <article className={`relationship-card relationship-card--${signal.alignment}`} key={signal.id}>
+            <header><span>{signal.driverDomain} → {signal.outcomeDomain}</span><b>{signal.coefficient === null ? "n/a" : `r ${signal.coefficient.toFixed(2)}`}</b></header>
+            <h3>{signal.driverLabel} → {signal.outcomeLabel}</h3><p>{signal.narrative}</p>
+            <div><span>{signal.strength}</span><span>n {signal.sampleSize}</span><span>lag {signal.lagDays}d</span><span>{signal.confidence} confidence</span></div>
+            <footer><ArrowRight size={14} /><span>{signal.decision}</span></footer>
+          </article>
+        ))}
+      </section>
+
+      <section className="section-block">
+        <SectionHeader eyebrow="Recurring evidence" title="Historical pain that survives weekly review" description="Metric breach dan highlight Sheet disatukan; source dan impact score tetap transparan." />
+        <div className="diagnostic-grid">
+          {data.painPoints.length ? data.painPoints.map((pain, index) => <article className="diagnostic-card" key={pain.id}><div className="diagnostic-card__index">0{index + 1}</div><div className="diagnostic-card__body"><div className="tag-row"><span>{pain.domain}</span><span>{pain.recurrenceWeeks}/8 weeks</span><span>{pain.source} evidence</span><span>impact {pain.impactScore}</span></div><h3>{pain.title}</h3><p>{pain.hypothesis}</p><div className="evidence-box"><strong>Observed evidence</strong>{pain.evidence.map((item) => <span key={item}>{item}</span>)}</div></div></article>) : <div className="panel empty-state"><Info size={20} /><p>Belum ada recurrent breach yang memenuhi threshold. Sistem tetap mempertahankan validation initiative.</p></div>}
+        </div>
+      </section>
+
+      <section className="panel">
+        <SectionHeader eyebrow="Guardrail matrix" title="Trade-offs every review must protect" />
+        <div className="guardrail-grid"><div><strong>Volume ↓, MP tetap</strong><span>Productivity dapat turun tanpa process failure.</span></div><div><strong>MP ↑</strong><span>SLA seharusnya membaik; output per manday dapat terdilusi.</span></div><div><strong>Actual MD &lt; budget</strong><span>Saving valid hanya bila SLA dan productivity sehat.</span></div><div><strong>Cancel ↑</strong><span>Harus dibuktikan dengan capacity, remaining hours, dan run-rate.</span></div><div><strong>DCC ↓</strong><span>Telusuri SLOC, replenish, troubleshoot, Pick-to-PF, lalu picker.</span></div><div><strong>Capacity ≥ 92%</strong><span>Tambahan volume atau MP berisiko congestion dan queue.</span></div></div>
+      </section>
+    </>
+  );
+}
+
+function ScenarioStudio({ data }: { data: AnalysisPayload }) {
   const [inputs, setInputs] = useState<SimulationInputs>({ forecastChange: 0, attendanceChange: 0, cancelChange: 0, processGain: 0 });
   const find = (key: string, fallback: number) => data.kpis.find((item) => item.key === key)?.value ?? fallback;
-  const result = runSimulation({ productivityAttainment: find("productivity_attainment", 90), sla: find("sla_checker_inbound", 95), fulfillment: find("fulfillment_rate", 97), utilization: find("capacity_utilization", 75), mandaysGap: find("mandays_variance", 0) }, inputs);
+  const baseline = { productivityAttainment: find("productivity_attainment", 90), sla: find("sla_checker_inbound", 95), fulfillment: find("fulfillment_rate", 97), utilization: find("capacity_utilization", 75), mandaysGap: find("mandays_variance", 0) };
+  const result = runSimulation(baseline, inputs);
   const controls: Array<{ key: keyof SimulationInputs; label: string; hint: string; min: number; max: number }> = [
     { key: "forecastChange", label: "Actual volume vs baseline", hint: "Perubahan workload yang benar-benar masuk", min: -30, max: 35 },
-    { key: "attendanceChange", label: "Attendance / actual mandays", hint: "Perubahan MP tersedia", min: -20, max: 20 },
-    { key: "cancelChange", label: "Cancel rate change", hint: "Negatif = lebih sedikit request dicancel", min: -10, max: 10 },
+    { key: "attendanceChange", label: "Attendance / actual mandays", hint: "Perubahan manpower tersedia", min: -20, max: 20 },
+    { key: "cancelChange", label: "Cancel rate change", hint: "Negatif = request cancelled berkurang", min: -10, max: 10 },
     { key: "processGain", label: "Process efficiency gain", hint: "Perbaikan pickface, travel, rework, atau system", min: 0, max: 20 },
   ];
-  const outcomes = [
-    ["Productivity", result.productivityChange], ["Inbound SLA", result.slaChange], ["Fulfillment", result.fulfillmentChange], ["Capacity load", result.utilizationChange], ["Mandays gap", result.mandaysGapChange],
-  ] as const;
   return (
     <>
-      <SectionHeader eyebrow="What-if simulator" title="Stress-test a decision before the floor feels it" description="Model heuristik transparan untuk directional planning—bukan pengganti forecast model atau time study." />
+      <PageIntro eyebrow="Transparent what-if model" title="Stress-test the decision before the floor feels it" description="Simulator directional untuk melihat tarik-menarik volume, manpower, cancel, productivity, SLA, fulfillment, dan capacity." meta={`${data.context.warehouse} baseline · ${periodLabels[data.context.period]}`} />
       <section className="simulation-layout">
         <div className="panel controls-panel">
-          <div className="simulation-baseline"><SlidersHorizontal size={18} /><div><strong>{data.context.warehouse} baseline</strong><span>{periodLabels[data.context.period]} · as of {fmtDate(data.context.asOf)}</span></div></div>
-          {controls.map((control) => (
-            <label className="range-control" key={control.key}>
-              <div><span>{control.label}</span><output>{fmtSigned(inputs[control.key])}</output></div>
-              <p>{control.hint}</p>
-              <input type="range" min={control.min} max={control.max} step="1" value={inputs[control.key]} onChange={(event) => setInputs((current) => ({ ...current, [control.key]: Number(event.target.value) }))} />
-              <div className="range-bounds"><span>{control.min}%</span><span>{control.max}%</span></div>
-            </label>
-          ))}
+          <div className="simulation-baseline"><SlidersHorizontal size={18} /><div><strong>{data.context.warehouse} observed baseline</strong><span>Cut-off {fmtDate(data.context.asOf)}</span></div></div>
+          {controls.map((control) => <label className="range-control" key={control.key}><div><span>{control.label}</span><output>{fmtSigned(inputs[control.key])}</output></div><p>{control.hint}</p><input type="range" min={control.min} max={control.max} step="1" value={inputs[control.key]} onChange={(event) => setInputs((current) => ({ ...current, [control.key]: Number(event.target.value) }))} /><div className="range-bounds"><span>{control.min}%</span><span>{control.max}%</span></div></label>)}
           <button className="secondary-button" onClick={() => setInputs({ forecastChange: 0, attendanceChange: 0, cancelChange: 0, processGain: 0 })}>Reset scenario</button>
         </div>
-        <div className="panel simulation-results">
-          <span className="eyebrow">Projected movement</span>
-          <div className="outcome-grid">
-            {outcomes.map(([label, value]) => <div key={label}><span>{label}</span><strong className={value < 0 ? "is-negative" : value > 0 ? "is-positive" : ""}>{fmtSigned(value)}</strong><i style={{ width: `${Math.min(100, Math.abs(value) * 3)}%` }} /></div>)}
-          </div>
-          <div className="model-notes"><strong>Model interpretation</strong>{result.notes.map((note) => <p key={note}><Info size={14} />{note}</p>)}</div>
+        <div className="panel chart-panel simulation-chart-panel">
+          <SectionHeader eyebrow="Projected movement" title="Directional impact versus baseline" description="Positive/negative berarti perubahan poin terhadap baseline, bukan level absolut baru." />
+          <SimulationImpactChart result={result} />
+          <div className="model-notes model-notes--light"><strong>Model interpretation</strong>{result.notes.map((note) => <p key={note}><Info size={14} />{note}</p>)}</div>
         </div>
       </section>
-      <section className="panel assumption-panel">
-        <Target size={19} /><div><strong>Model mechanics</strong><p>Volume memengaruhi output per fixed manday; attendance menambah SLA buffer tetapi bisa menurunkan productivity; process gain meningkatkan throughput; dampak dilunakkan saat capacity melewati 88%.</p></div>
-      </section>
+      <section className="baseline-grid"><div><span>Productivity</span><strong>{baseline.productivityAttainment.toFixed(1)}%</strong></div><div><span>Inbound SLA</span><strong>{baseline.sla.toFixed(1)}%</strong></div><div><span>Fulfillment</span><strong>{baseline.fulfillment.toFixed(1)}%</strong></div><div><span>Peak capacity</span><strong>{baseline.utilization.toFixed(1)}%</strong></div><div><span>Mandays gap</span><strong>{fmtSigned(baseline.mandaysGap)}</strong></div></section>
+      <section className="panel assumption-panel"><Target size={19} /><div><strong>Model mechanics and boundary</strong><p>Volume memengaruhi output per fixed manday; attendance menambah SLA buffer tetapi dapat menurunkan productivity; process gain menaikkan throughput; return dilunakkan saat capacity melewati 88%. Gunakan hasil untuk memilih pilot, bukan sebagai forecast finansial.</p></div></section>
     </>
   );
 }
 
-function InitiativeEngine({ data }: { data: AnalysisPayload }) {
+function InitiativePortfolio({ data }: { data: AnalysisPayload }) {
   return (
     <>
-      <SectionHeader eyebrow="Prioritized transformation" title="Projects generated from recurring evidence" description="Minimal dua inisiatif per WH; setiap project memiliki outcome, guardrail, dan langkah 14 hari." />
+      <PageIntro eyebrow="Execution portfolio" title="Turn recurring pain into measurable projects" description="Setiap project memiliki owner, effort, horizon, evidence, outcome, guardrail, dan langkah pertama—bukan sekadar generic recommendation." meta={`${data.initiatives.length} projects · ${data.context.warehouse}`} />
+      <section className="portfolio-overview">
+        <div className="panel chart-panel"><SectionHeader eyebrow="Priority vs effort" title="Fund the right work first" description="Ukuran titik menunjukkan horizon; garis 65 adalah action threshold." /><InitiativePriorityChart initiatives={data.initiatives} /></div>
+        <div className="portfolio-summary">
+          <article><Users size={17} /><span>Primary owners</span><strong>{new Set(data.initiatives.map((item) => item.owner)).size}</strong></article>
+          <article><Target size={17} /><span>High-confidence</span><strong>{data.initiatives.filter((item) => item.confidence === "high").length}</strong></article>
+          <article><CalendarDays size={17} /><span>Fastest horizon</span><strong>{Math.min(...data.initiatives.map((item) => item.horizonDays))}d</strong></article>
+          <article><Sparkles size={17} /><span>Top priority</span><strong>{Math.max(...data.initiatives.map((item) => item.priorityScore))}</strong></article>
+        </div>
+      </section>
       <section className="initiative-grid">
         {data.initiatives.map((initiative, index) => (
           <article className="initiative-card" key={initiative.id}>
-            <header><span className="initiative-number">0{index + 1}</span><div><div className="tag-row"><span>{initiative.type}</span><span>{initiative.confidence} confidence</span></div><h3>{initiative.title}</h3></div></header>
-            <div className="initiative-section"><span>Problem</span><p>{initiative.problem}</p></div>
-            <div className="initiative-section"><span>Intervention</span><p>{initiative.intervention}</p></div>
-            <div className="initiative-section initiative-section--impact"><span>Expected impact</span><p>{initiative.expectedImpact}</p></div>
-            <div className="initiative-columns">
-              <div><strong>Measure</strong>{initiative.measurement.map((item) => <p key={item}><CheckCircle2 size={13} />{item}</p>)}</div>
-              <div><strong>First 14 days</strong>{initiative.first14Days.map((item) => <p key={item}><ChevronRight size={13} />{item}</p>)}</div>
-            </div>
+            <header><span className="initiative-number">0{index + 1}</span><div><div className="tag-row"><span>{initiative.type}</span><span>{initiative.confidence} confidence</span><span>priority {initiative.priorityScore}</span></div><h3>{initiative.title}</h3><div className="initiative-meta"><span><Users size={13} />{initiative.owner}</span><span><BarChart3 size={13} />{initiative.effort} effort</span><span><CalendarDays size={13} />{initiative.horizonDays} days</span></div></div></header>
+            <div className="initiative-section"><span>Problem</span><p>{initiative.problem}</p></div><div className="initiative-section"><span>Intervention</span><p>{initiative.intervention}</p></div><div className="initiative-section initiative-section--impact"><span>Expected impact</span><p>{initiative.expectedImpact}</p></div>
+            <div className="initiative-evidence"><strong>Evidence used</strong>{initiative.evidence.map((item) => <span key={item}>{item}</span>)}</div>
+            <div className="initiative-columns"><div><strong>Measure & guardrail</strong>{initiative.measurement.map((item) => <p key={item}><CheckCircle2 size={13} />{item}</p>)}</div><div><strong>First 14 days</strong>{initiative.first14Days.map((item) => <p key={item}><ChevronRight size={13} />{item}</p>)}</div></div>
           </article>
         ))}
       </section>
@@ -280,35 +326,17 @@ function InitiativeEngine({ data }: { data: AnalysisPayload }) {
   );
 }
 
-function MetricExplorer({ data }: { data: AnalysisPayload }) {
+function MetricRegistry({ data }: { data: AnalysisPayload }) {
   const [query, setQuery] = useState("");
-  const filtered = data.pivotRows.filter((item) => `${item.division} ${item.role} ${item.metric} ${item.detail}`.toLowerCase().includes(query.toLowerCase()));
+  const filtered = useMemo(() => data.pivotRows.filter((item) => `${item.division} ${item.role} ${item.metric} ${item.detail}`.toLowerCase().includes(query.toLowerCase())), [data.pivotRows, query]);
   return (
     <>
-      <SectionHeader eyebrow="Pivot intelligence" title={`${data.pivotRows.length} metrics in the active cut`} description="Setiap baris dihitung dengan aggregation rule, period comparison, coverage, dan arah pergerakan yang konsisten." />
-      <section className="data-quality-strip">
-        <div><span>Source</span><strong>{data.context.sourceName}</strong></div>
-        <div><span>Read mode</span><strong>{data.context.sourceMode === "google" ? "Google batch API" : data.context.sourceMode === "snapshot" ? "Optimized snapshot" : "Local workbook"}</strong></div>
-        <div><span>Latest actual</span><strong>{fmtDate(data.context.asOf)}</strong></div>
-        <div><span>Confidence</span><strong>{data.health.confidence}%</strong></div>
-      </section>
+      <PageIntro eyebrow="Metric registry & QA" title="Trace every number to its operating context" description="Pivot mempertahankan function, role, metric, detail, aggregation, comparison window, coverage, dan movement direction." meta={`${data.pivotRows.length} metrics · ${data.metricCatalog.length} catalog entries`} />
+      <section className="data-quality-strip"><div><span>Source</span><strong>{data.context.sourceName}</strong></div><div><span>Read mode</span><strong>{data.context.sourceMode === "google" ? "Google batch API" : data.context.sourceMode === "snapshot" ? "Optimized snapshot" : "Local workbook"}</strong></div><div><span>Latest actual</span><strong>{fmtDate(data.context.asOf)}</strong></div><div><span>Confidence</span><strong>{data.health.confidence}%</strong></div></section>
       {data.health.dataWarnings.length > 0 && <section className="warning-panel"><AlertTriangle size={20} /><div><strong>Quality guardrails active</strong>{data.health.dataWarnings.map((warning) => <p key={warning}>{warning}</p>)}</div></section>}
       <section className="panel metric-panel">
-        <div className="table-toolbar"><div><TableProperties size={17} /><span>Period pivot · current vs previous</span></div><div className="search-box"><Search size={17} /><input aria-label="Cari metric" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search metric or role" /><span>{filtered.length}</span></div></div>
-        <div className="metric-table" role="table">
-          <div className="metric-row metric-row--pivot metric-row--head" role="row"><span>Function / role</span><span>Metric</span><span>Aggregation</span><span>Current</span><span>Previous</span><span>Delta</span><span>Coverage</span></div>
-          {filtered.slice(0, 250).map((item) => (
-            <div className="metric-row metric-row--pivot" role="row" key={item.id}>
-              <span><b>{item.division}</b><small>{item.role}</small></span>
-              <strong title={item.detail}>{item.metric}</strong>
-              <span className="aggregation-pill">{item.aggregation}</span>
-              <b>{fmtMetric(item.current, item.unit)}</b>
-              <span>{fmtMetric(item.previous, item.unit)}</span>
-              <span className={`movement movement--${item.movement}`}>{item.deltaPct === null ? "—" : fmtSigned(item.deltaPct)}</span>
-              <span>{Math.round(item.coverage * 100)}%</span>
-            </div>
-          ))}
-        </div>
+        <div className="table-toolbar"><div><TableProperties size={17} /><span>Period pivot · current vs previous</span></div><div className="search-box"><Search size={17} /><input aria-label="Cari metric" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search metric, role, or function" /><span>{filtered.length}</span></div></div>
+        <div className="metric-table" role="table"><div className="metric-row metric-row--pivot metric-row--head" role="row"><span>Function / role</span><span>Metric</span><span>Aggregation</span><span>Current</span><span>Previous</span><span>Delta</span><span>Coverage</span></div>{filtered.slice(0, 250).map((item) => <div className="metric-row metric-row--pivot" role="row" key={item.id}><span><b>{item.division}</b><small>{item.role}</small></span><strong title={item.detail}>{item.metric}</strong><span className="aggregation-pill">{item.aggregation}</span><b>{fmtMetric(item.current, item.unit)}</b><span>{fmtMetric(item.previous, item.unit)}</span><span className={`movement movement--${item.movement}`}>{item.deltaPct === null ? "—" : fmtSigned(item.deltaPct)}</span><span>{Math.round(item.coverage * 100)}%</span></div>)}</div>
       </section>
     </>
   );
@@ -335,9 +363,7 @@ export function DashboardShell() {
       const response = await fetch(`/api/analysis?${query.toString()}`, { cache: "no-store" });
       const payload = await response.json() as AnalysisPayload & { error?: string; detail?: string; remediation?: string };
       if (!response.ok) throw new Error([payload.error, payload.detail, payload.remediation].filter(Boolean).join(" — "));
-      setData(payload);
-      setError(null);
-      setLastRefresh(new Date());
+      setData(payload); setError(null); setLastRefresh(new Date());
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Gagal membaca source");
     } finally {
@@ -355,58 +381,35 @@ export function DashboardShell() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand"><div className="brand-mark"><BarChart3 size={19} /></div><div><strong>NEXUS</strong><span>Excellence Analysis</span></div></div>
-        <nav aria-label="Primary">
-          <span className="nav-caption">Workspace</span>
-          {nav.map((item) => { const Icon = item.icon; return <button data-view={item.id} className={view === item.id ? "active" : ""} key={item.id} onClick={() => setView(item.id)}><Icon size={17} /><span>{item.label}</span>{item.id === "initiatives" && data && <b>{data.initiatives.length}</b>}</button>; })}
-        </nav>
-        <div className="sidebar-status">
-          <div className="live-dot" />
-          <div><strong>Source monitor</strong><span>{error ? "Connection needs attention" : "Auto-refresh · 60 sec"}</span></div>
-        </div>
-        <div className="sidebar-footer"><span>FIT Operations Intelligence</span><small>v0.2 · 100% open stack</small></div>
+        <nav aria-label="Primary"><span className="nav-caption">Decision workspaces</span>{nav.map((item) => { const Icon = item.icon; return <button data-view={item.id} className={view === item.id ? "active" : ""} key={item.id} onClick={() => setView(item.id)} title={item.label}><Icon size={17} /><span className="nav-label-long">{item.label}</span><span className="nav-label-short">{item.short}</span>{item.id === "initiatives" && data && <b>{data.initiatives.length}</b>}</button>; })}</nav>
+        <div className="sidebar-status"><div className="live-dot" /><div><strong>Source monitor</strong><span>{error ? "Connection needs attention" : "Auto-refresh · 60 sec"}</span></div></div>
+        <div className="sidebar-footer"><span>FIT Operations Intelligence</span><small>v0.3 · connected decision system</small></div>
       </aside>
 
       <main className="main-area">
-        <header className="topbar">
-          <div className="breadcrumb"><span>FIT Ops Intelligence</span><ChevronRight size={14} /><strong>{nav.find((item) => item.id === view)?.label}</strong></div>
-          <div className="topbar-actions">
-            <div className={`source-chip source-chip--${error ? "error" : "live"}`}><Activity size={14} /><span>{data?.context.sourceMode === "google" ? "Google live" : data?.context.sourceMode === "snapshot" ? "Snapshot fast-path" : "Local source"}</span></div>
-            <button className="refresh-button" onClick={() => void refresh(false, true)} aria-label="Refresh source"><RefreshCw className={loading ? "spinning" : ""} size={16} /><span>Sync now</span></button>
-          </div>
-        </header>
+        <header className="topbar"><div className="breadcrumb"><span>FIT Ops Intelligence</span><ChevronRight size={14} /><strong>{nav.find((item) => item.id === view)?.label}</strong></div><div className="topbar-actions"><div className={`source-chip source-chip--${error ? "error" : "live"}`}><Activity size={14} /><span>{data?.context.sourceMode === "google" ? "Google live" : data?.context.sourceMode === "snapshot" ? "Snapshot fast-path" : "Local source"}</span></div><button className="refresh-button" onClick={() => void refresh(false, true)} aria-label="Refresh source"><RefreshCw className={loading ? "spinning" : ""} size={16} /><span>Sync now</span></button></div></header>
 
         <div className="content-area">
           <div className="context-line"><span>{warehouse} · {periodLabels[period]} intelligence</span><span>{lastRefresh ? `Refreshed ${lastRefresh.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}` : "Connecting to source"}</span></div>
           <section className="filter-console" aria-label="Analysis filters">
-            <div className="filter-console__title"><SlidersHorizontal size={17} /><div><strong>Analysis scope</strong><span>Semua view mengikuti cut-off yang sama</span></div></div>
+            <div className="filter-console__title"><SlidersHorizontal size={17} /><div><strong>Analysis scope</strong><span>All pages use one operational cut-off</span></div></div>
             <div className="filter-console__fields">
-              <FilterSelect label="Warehouse" value={warehouse} onChange={(value) => { setWarehouse(value as WarehouseCode); setDivision("All"); setRole("All"); setAsOf(""); }}>
-                {PRIORITY_WAREHOUSES.map((item) => <option value={item} key={item}>{item}</option>)}
-              </FilterSelect>
-              <FilterSelect label="Function" value={division} onChange={(value) => { setDivision(value); setRole("All"); }}>
-                <option value="All">All functions</option>
-                {(data?.filters.divisions ?? []).map((item) => <option value={item} key={item}>{item}</option>)}
-              </FilterSelect>
-              <FilterSelect label="Role" value={role} onChange={setRole} disabled={!data}>
-                <option value="All">All roles</option>
-                {(data?.filters.rolesByDivision[division] ?? data?.filters.rolesByDivision.All ?? []).map((item) => <option value={item} key={item}>{item}</option>)}
-              </FilterSelect>
-              <FilterSelect label="Data cut-off" value={asOf} onChange={setAsOf} disabled={!data}>
-                <option value="">Latest actual</option>
-                {(data?.filters.availableDates ?? []).map((item) => <option value={item} key={item}>{fmtDate(item)}</option>)}
-              </FilterSelect>
+              <FilterSelect label="Warehouse" value={warehouse} onChange={(value) => { setWarehouse(value as WarehouseCode); setDivision("All"); setRole("All"); setAsOf(""); }}>{PRIORITY_WAREHOUSES.map((item) => <option value={item} key={item}>{item}</option>)}</FilterSelect>
+              <FilterSelect label="Function" value={division} onChange={(value) => { setDivision(value); setRole("All"); }}><option value="All">All functions</option>{(data?.filters.divisions ?? []).map((item) => <option value={item} key={item}>{item}</option>)}</FilterSelect>
+              <FilterSelect label="Role" value={role} onChange={setRole} disabled={!data}><option value="All">All roles</option>{(data?.filters.rolesByDivision[division] ?? data?.filters.rolesByDivision.All ?? []).map((item) => <option value={item} key={item}>{item}</option>)}</FilterSelect>
+              <FilterSelect label="Data cut-off" value={asOf} onChange={setAsOf} disabled={!data}><option value="">Latest actual</option>{(data?.filters.availableDates ?? []).map((item) => <option value={item} key={item}>{fmtDate(item)}</option>)}</FilterSelect>
             </div>
             <div className="period-control"><span>View</span><div className="period-switcher" aria-label="Period">{Object.entries(periodLabels).map(([key, label]) => <button className={period === key ? "active" : ""} onClick={() => setPeriod(key as Period)} key={key}>{label}</button>)}</div></div>
           </section>
-          {error ? <section className="source-error"><AlertTriangle size={24} /><div><h2>Live source belum terhubung</h2><p>{error}</p><button onClick={() => void refresh()}><RefreshCw size={15} />Retry connection</button></div></section> : loading && !data ? <Skeleton /> : data ? (
-            <>
-              {view === "overview" && <ControlTower data={data} />}
-              {view === "diagnostic" && <Diagnostic data={data} />}
-              {view === "simulation" && <ScenarioLab data={data} />}
-              {view === "initiatives" && <InitiativeEngine data={data} />}
-              {view === "data" && <MetricExplorer data={data} />}
-            </>
-          ) : <Skeleton />}
+
+          {error ? <section className="source-error"><AlertTriangle size={24} /><div><h2>Live source belum terhubung</h2><p>{error}</p><button onClick={() => void refresh()}><RefreshCw size={15} />Retry connection</button></div></section> : loading && !data ? <Skeleton /> : data ? <>
+            {view === "overview" && <ExecutiveCockpit data={data} openInitiatives={() => setView("initiatives")} />}
+            {view === "flow" && <FlowIntelligence data={data} />}
+            {view === "relationships" && <RelationshipLab data={data} />}
+            {view === "simulation" && <ScenarioStudio data={data} />}
+            {view === "initiatives" && <InitiativePortfolio data={data} />}
+            {view === "data" && <MetricRegistry data={data} />}
+          </> : <Skeleton />}
         </div>
       </main>
     </div>

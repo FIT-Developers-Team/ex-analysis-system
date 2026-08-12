@@ -33,5 +33,15 @@ describe("analysis engine", () => {
     expect(output.filters.divisions).toContain("Outbound");
     expect(output.pivotRows.some((item) => item.metric === "Outbound Qty Requested")).toBe(true);
     expect(output.warehouseComparison.find((item) => item.warehouse === "PGS")?.productivity).toBe(90);
+    expect(output.volumeFlow).toHaveLength(28);
+    expect(output.fulfillmentFunnel.map((item) => item.key)).toEqual(["forecast", "before-cancel", "after-cancel", "rts", "hub"]);
+    expect(output.laborBalance).toHaveLength(28);
+    expect(output.capacityHistory).toHaveLength(28);
+    expect(output.relationshipSignals).toHaveLength(9);
+    expect(output.relationshipSignals.every((item) => item.coefficient === null && item.strength === "insufficient")).toBe(true);
+    expect(output.riskMatrix.rows).toHaveLength(7);
+    expect(output.riskMatrix.weeks).toHaveLength(8);
+    expect(output.decisionInsights.some((item) => item.id === "cancel-not-recovering-productivity")).toBe(true);
+    expect(output.initiatives.every((item) => item.owner && item.horizonDays > 0 && item.priorityScore >= 0)).toBe(true);
   });
 });
