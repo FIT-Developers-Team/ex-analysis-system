@@ -1,0 +1,15 @@
+node_modules/
+.next/
+out/
+coverage/
+.cache/
+*.tsbuildinfo
+*.log
+.env
+.env.local
+.env.*.local
+!.env.example
+data/*.xlsx
+data/*.xls
+data/*.csv
+!data/.gitkeep
