@@ -102,6 +102,40 @@ describe("analysis engine", () => {
     expect(output.kpis.find((item) => item.key === "demand_fill_rate")?.value).toBeCloseTo(93.68, 1);
   });
 
+  it("uses period totals for fulfillment and actual-mandays weights for productivity", () => {
+    const points = [
+      point("2026-08-03", "Outbound Forecast Weekly", 10),
+      point("2026-08-03", "Outbound Qty Requested (Before Cancel)", 10),
+      point("2026-08-03", "Outbound Qty Requested", 10),
+      point("2026-08-03", "Outbound Qty RTS", 9),
+      point("2026-08-03", "Fulfillment Rate % Warehouse", 0.9),
+      point("2026-08-03", "Picker Actual Productivity Collective", 9),
+      point("2026-08-03", "Picker Productivity Target", 10),
+      point("2026-08-03", "Actual Mandays Picker", 1),
+      point("2026-08-03", "Troubleshoot Task Created", 1),
+      point("2026-08-03", "Troubleshoot Task Executed", 0),
+      point("2026-08-04", "Outbound Forecast Weekly", 100),
+      point("2026-08-04", "Outbound Qty Requested (Before Cancel)", 100),
+      point("2026-08-04", "Outbound Qty Requested", 100),
+      point("2026-08-04", "Outbound Qty RTS", 100),
+      point("2026-08-04", "Fulfillment Rate % Warehouse", 1),
+      point("2026-08-04", "Picker Actual Productivity Collective", 10),
+      point("2026-08-04", "Picker Productivity Target", 10),
+      point("2026-08-04", "Actual Mandays Picker", 10),
+      point("2026-08-04", "Troubleshoot Task Created", 99),
+      point("2026-08-04", "Troubleshoot Task Executed", 99),
+    ];
+    const output = buildAnalysis(dataset(points, "2026-08-04T00:00:00Z"), "PGS", "custom", { startDate: "2026-08-03", endDate: "2026-08-04" });
+
+    // Daily FR average would be 95%; the correct period ratio is 109 / 110.
+    expect(output.kpis.find((item) => item.key === "fulfillment_rate")?.value).toBeCloseTo((109 / 110) * 100, 8);
+    // Daily productivity average would also be 95%; weighting by 1 and 10 MD
+    // correctly measures the output capacity actually consumed in the period.
+    expect(output.kpis.find((item) => item.key === "productivity_attainment")?.value).toBeCloseTo((109 / 110) * 100, 8);
+    // Completion rates follow the same ratio-of-period-totals rule.
+    expect(output.kpis.find((item) => item.key === "troubleshoot_fr")?.value).toBeCloseTo(99, 8);
+  });
+
   it("cancelling demand cannot improve the demand fill rate", () => {
     const shipped = 89;
     const relaxed = baselinePoints().map((item) =>

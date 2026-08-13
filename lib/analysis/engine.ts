@@ -125,12 +125,51 @@ function metricValue(points: MetricPoint[], key: string, window: Window, mode: A
   return aggregate(points, key, window, mode);
 }
 
+/**
+ * Period productivity must be weighted by the mandays that produced the goods.
+ * Averaging daily productivity gives a quiet day the same influence as a busy
+ * day and can materially change a weekly or monthly result.
+ */
+function weightedProductivityAttainment(
+  points: MetricPoint[],
+  productivityKey: string,
+  mandaysKey: string,
+  targetKey: string,
+  window: Window,
+): Aggregate {
+  let actualOutput = 0;
+  let targetOutput = 0;
+  let operatingDates = 0;
+  let validDates = 0;
+
+  for (const date of datesInWindow(window)) {
+    const day = { start: date, end: date, days: 1 };
+    const productivity = metricValue(points, productivityKey, day, "average").value;
+    const mandays = metricValue(points, mandaysKey, day, "sum").value;
+    const target = metricValue(points, targetKey, day, "average").value;
+    const operated = (productivity ?? 0) > 0 || (mandays ?? 0) > 0;
+    if (!operated) continue;
+    operatingDates += 1;
+    if (productivity === null || mandays === null || target === null || mandays <= 0 || target <= 0) continue;
+    actualOutput += productivity * mandays;
+    targetOutput += mandays * target;
+    validDates += 1;
+  }
+
+  if (targetOutput <= 0) return { value: null, coverage: 0, count: 0 };
+  return {
+    value: (actualOutput / targetOutput) * 100,
+    coverage: operatingDates ? validDates / operatingDates : 0,
+    count: validDates,
+  };
+}
+
 function derived(points: MetricPoint[], key: string, window: Window): Aggregate {
   switch (key) {
     case "inbound_forecast_accuracy":
       return ratio(metricValue(points, "actual_inbound", window, "sum"), metricValue(points, "forecast_weekly_inbound", window, "sum"));
     case "inbound_productivity_attainment":
-      return ratio(metricValue(points, "checker_productivity", window), metricValue(points, "checker_productivity_target", window));
+      return weightedProductivityAttainment(points, "checker_productivity", "actual_checker_mandays", "checker_productivity_target", window);
     case "forecast_accuracy":
       // Forecast quality is measured against demand before cancellation. Using
       // the post-cancel request made an operational decision (cancel) rewrite
@@ -141,10 +180,14 @@ function derived(points: MetricPoint[], key: string, window: Window): Aggregate 
       // divides by the post-cancel request, so cancelling work raises it; this one
       // cannot be improved by removing demand.
       return ratio(metricValue(points, "outbound_rts", window, "sum"), metricValue(points, "outbound_before_cancel", window, "sum"));
+    case "fulfillment_rate":
+      // A period FR is one ratio over the whole period. Never use the latest
+      // daily percentage or an unweighted average of daily percentages.
+      return ratio(metricValue(points, "outbound_rts", window, "sum"), metricValue(points, "outbound_requested", window, "sum"));
     case "productivity_attainment":
-      return ratio(metricValue(points, "picker_productivity", window), metricValue(points, "picker_productivity_target", window));
+      return weightedProductivityAttainment(points, "picker_productivity", "actual_picker_mandays", "picker_productivity_target", window);
     case "putaway_productivity_attainment":
-      return ratio(metricValue(points, "putaway_productivity", window), metricValue(points, "putaway_productivity_target", window));
+      return weightedProductivityAttainment(points, "putaway_productivity", "actual_putaway_mandays", "putaway_productivity_target", window);
     case "relabel_productivity_attainment":
       return ratio(metricValue(points, "relabel_productivity", window), metricValue(points, "relabel_target", window));
     case "inbound_capacity_utilization":
@@ -165,6 +208,14 @@ function derived(points: MetricPoint[], key: string, window: Window): Aggregate 
       if (before.value === null || after.value === null || before.value === 0) return { value: null, coverage: Math.min(before.coverage, after.coverage), count: 0 };
       return { value: Math.max(0, ((before.value - after.value) / before.value) * 100), coverage: Math.min(before.coverage, after.coverage), count: Math.min(before.count, after.count) };
     }
+    case "troubleshoot_fr":
+      return ratio(metricValue(points, "troubleshoot_executed", window, "sum"), metricValue(points, "troubleshoot_created", window, "sum"));
+    case "replenishment_completion":
+      return ratio(metricValue(points, "replenishment_done", window, "sum"), metricValue(points, "replenishment_task", window, "sum"));
+    case "putaway_completion":
+      return ratio(metricValue(points, "putaway_done", window, "sum"), metricValue(points, "putaway_actual", window, "sum"));
+    case "truck_delivered_rate":
+      return ratio(metricValue(points, "actual_truck_delivered", window, "sum"), metricValue(points, "truck_dedicated", window, "sum"));
     case "capacity_utilization": {
       const direct = [metricValue(points, "inbound_utilization", window), metricValue(points, "inventory_utilization_max", window), metricValue(points, "outbound_utilization", window)];
       const derivedCapacity = [
@@ -191,8 +242,13 @@ function derived(points: MetricPoint[], key: string, window: Window): Aggregate 
 
 function normalizePercent(key: string, value: number | null): number | null {
   if (value === null) return null;
-  const directPercent = new Set(["inbound_forecast_accuracy", "inbound_productivity_attainment", "forecast_accuracy", "demand_fill_rate", "productivity_attainment", "putaway_productivity_attainment", "relabel_productivity_attainment", "inbound_capacity_utilization", "inventory_capacity_utilization", "outbound_capacity_utilization", "mandays_variance", "cancel_rate", "capacity_utilization", "dcc_accuracy"]);
+  const directPercent = new Set(["inbound_forecast_accuracy", "inbound_productivity_attainment", "forecast_accuracy", "fulfillment_rate", "demand_fill_rate", "productivity_attainment", "putaway_productivity_attainment", "relabel_productivity_attainment", "inbound_capacity_utilization", "inventory_capacity_utilization", "outbound_capacity_utilization", "mandays_variance", "cancel_rate", "capacity_utilization", "dcc_accuracy", "troubleshoot_fr", "replenishment_completion", "putaway_completion", "truck_delivered_rate"]);
   return !directPercent.has(key) && Math.abs(value) <= 2 ? value * 100 : value;
+}
+
+function normalizeSourcePercent(value: number | null): number | null {
+  if (value === null) return null;
+  return Math.abs(value) <= 2 ? value * 100 : value;
 }
 
 const rules: Record<string, { label: string; unit: MetricReading["unit"]; target: number | null; higher: boolean; interpretation: string }> = {
@@ -205,7 +261,7 @@ const rules: Record<string, { label: string; unit: MetricReading["unit"]; target
   inbound_capacity_utilization: { label: "Inbound utilization", unit: "percent", target: 85, higher: false, interpretation: "Actual inbound terhadap max inbound capacity." },
   inventory_capacity_utilization: { label: "Inventory utilization", unit: "percent", target: 85, higher: false, interpretation: "Peak inventory actual terhadap max inventory capacity." },
   outbound_capacity_utilization: { label: "Outbound utilization", unit: "percent", target: 85, higher: false, interpretation: "Request setelah cancel terhadap max outbound capacity." },
-  fulfillment_rate: { label: "Warehouse FR", unit: "percent", target: 99, higher: true, interpretation: "RTS terhadap request setelah cancel; kebal terhadap pembatalan, baca bersama Demand fill rate." },
+  fulfillment_rate: { label: "Warehouse FR", unit: "percent", target: 99, higher: true, interpretation: "Total RTS ÷ total request setelah cancel pada rentang aktif. Baca bersama Demand fill rate." },
   // Target 97 is derived from the guardrails the business already set, not invented:
   // FR target 99% x (100% - cancel target 2%) = 97.02%.
   demand_fill_rate: { label: "Demand fill rate", unit: "percent", target: 97, higher: true, interpretation: "RTS terhadap request sebelum cancel; inilah porsi permintaan yang benar-benar dilayani." },
@@ -1594,7 +1650,7 @@ function operatingPicture(
   chains: CausalChain[],
 ): OperatingPicture {
   const value = (key: string) => kpis.find((item) => item.key === key)?.value ?? null;
-  const pct = (input: number | null) => input === null ? "n/a" : `${input.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%`;
+  const pct = (input: number | null, precision = 1) => input === null ? "n/a" : `${input.toLocaleString("id-ID", { minimumFractionDigits: precision, maximumFractionDigits: precision })}%`;
   const forecast = value("forecast_accuracy");
   const productivity = value("productivity_attainment");
   const demandFill = value("demand_fill_rate");
@@ -1634,7 +1690,7 @@ function operatingPicture(
   ].filter((item): item is string => Boolean(item));
   const verifiedFacts = [
     forecast === null ? null : `Demand awal berada di ${pct(forecast)} terhadap forecast weekly.`,
-    cancel === null || demandFill === null ? null : `Cancel ${pct(cancel)} menyisakan demand fill ${pct(demandFill)}; fulfillment post-cancel ${pct(fulfillment)}.`,
+    cancel === null || demandFill === null ? null : `Cancel ${pct(cancel)} menyisakan demand fill ${pct(demandFill)}; fulfillment post-cancel ${pct(fulfillment, 2)}.`,
     productivity === null || mandays === null ? null : `Productivity attainment ${pct(productivity)} dengan actual mandays ${pct(mandays)} terhadap budget.`,
     capacity === null ? null : `Utilisasi puncak flow ${pct(capacity)}; headroom zona terendah ${pct(economics.capacityHeadroomPct)}.`,
     pickface === null ? null : `Pick-to-PF ${pct(pickface)}; DCC ${pct(dcc)}; troubleshoot FR ${pct(troubleshoot)}.`,
@@ -1694,7 +1750,7 @@ function operatingPicture(
       { phase: "diagnose", owner: "Ops Excellence", action: "Lakukan observasi floor terarah sambil menutup gap data.", exitGate: "Hipotesis utama memiliki bukti kuantitatif dan observasi." },
     ],
   };
-  const headline = mode === "demand_suppression" ? `Fulfillment terlihat ${pct(fulfillment)}, tetapi demand fill hanya ${pct(demandFill)}`
+  const headline = mode === "demand_suppression" ? `Fulfillment terlihat ${pct(fulfillment, 2)}, tetapi demand fill hanya ${pct(demandFill)}`
     : mode === "surge_undercoverage" ? `Demand ${pct(forecast)} dari rencana menekan produktivitas dan service buffer`
       : mode === "capacity_constrained" ? `Operating envelope menyempit pada utilisasi puncak ${pct(capacity)}`
         : mode === "inventory_drag" ? `Readiness inventory membatasi Pick-to-PF ${pct(pickface)}`
@@ -1988,11 +2044,15 @@ export function buildAnalysis(
 
   // The source computes its own forecast accuracy. Comparing it against the engine's
   // derivation turns a silent divergence into a visible warning.
-  for (const [derivedKey, sourceKey, label] of [["forecast_accuracy", "source_outbound_forecast_accuracy", "Forecast accuracy outbound"], ["inbound_forecast_accuracy", "source_inbound_forecast_accuracy", "Forecast accuracy inbound"]] as const) {
+  for (const [derivedKey, sourceKey, label, tolerance] of [
+    ["forecast_accuracy", "source_outbound_forecast_accuracy", "Forecast accuracy outbound", 2],
+    ["inbound_forecast_accuracy", "source_inbound_forecast_accuracy", "Forecast accuracy inbound", 2],
+    ["fulfillment_rate", "fulfillment_rate", "Fulfillment rate warehouse", 0.05],
+  ] as const) {
     const ours = normalizePercent(derivedKey, derived(warehousePoints, derivedKey, current).value);
-    const theirs = normalizePercent(sourceKey, metricValue(warehousePoints, sourceKey, current).value);
+    const theirs = normalizeSourcePercent(metricValue(warehousePoints, sourceKey, current).value);
     if (ours === null || theirs === null) continue;
-    if (Math.abs(ours - theirs) > 2) dataWarnings.push(`${label}: hasil mesin ${ours.toFixed(1)}% berbeda ${Math.abs(ours - theirs).toFixed(1)} pp dari kolom hitungan sumber (${theirs.toFixed(1)}%). Rekonsiliasi definisi diperlukan.`);
+    if (Math.abs(ours - theirs) > tolerance) dataWarnings.push(`${label}: hasil mesin ${ours.toFixed(2)}% berbeda ${Math.abs(ours - theirs).toFixed(2)} pp dari kolom hitungan sumber (${theirs.toFixed(2)}%). Rekonsiliasi definisi diperlukan.`);
   }
   if (!warehousePoints.some((point) => normalizeLabel(point.metric).includes("forecast") && normalizeLabel(point.metric).includes("relabel"))) dataWarnings.push("Forecast pcs relabel tidak tersedia; productivity relabel tidak boleh dinilai sebagai forecast attainment.");
   if (!warehousePoints.some((point) => normalizeLabel(point.role).includes("troubleshoot") && normalizeLabel(point.metric).includes("manday"))) dataWarnings.push("Mandays troubleshooter tidak tersedia; FR troubleshoot dapat dimonitor, tetapi dampak manpower belum dapat dibuktikan.");

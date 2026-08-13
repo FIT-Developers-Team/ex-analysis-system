@@ -83,9 +83,9 @@ The dashboard refreshes every 30 seconds only while the tab is visible and onlin
 
 ## Calculation boundaries
 
-- Productivity uses actual goods, not forecast volume.
+- Productivity uses actual goods, not forecast volume. Period productivity is weighted by actual mandays (`Σ(actual productivity × actual MD) ÷ Σ(target productivity × actual MD)`), so a quiet day cannot influence a weekly result as much as a busy day.
 - Forecast accuracy compares demand before cancellation against the matching weekly forecast. An execution decision to cancel demand cannot rewrite planning quality.
-- **Fulfillment is reported twice, on purpose.** `Warehouse FR` divides shipped units by demand *after* cancellation, so cancelling work raises it. `Demand fill rate` divides by demand *before* cancellation and cannot be improved by dropping orders. Read the gap between them as the share of demand that was refused rather than served. The 97% target is derived from the guardrails already in use — FR 99% × (100% − cancel target 2%).
+- **Fulfillment is reported twice, on purpose.** `Warehouse FR` is calculated from period totals (`ΣRTS ÷ Σrequest after cancel`), never from the latest date or an unweighted average of daily percentages. `Demand fill rate` divides the same RTS total by demand *before* cancellation and cannot be improved by dropping orders. Read the gap between them as the share of demand that was refused rather than served. The 97% target is derived from the guardrails already in use — FR 99% × (100% − cancel target 2%).
 - Mandays saving is only interpreted as healthy when productivity, SLA, **and cancel rate** are all within guardrail. A warehouse that cancels demand needs fewer mandays and posts higher output per manday at the same time, which is indistinguishable from efficiency unless cancellation is checked first.
 - Cost-to-serve is an operational labor-intensity proxy (`actual picker mandays ÷ RTS × 1,000`), not currency. No wage or financial cost is fabricated when the source does not contain it.
 - Cancel rate compares request before cancel with request after cancel.
@@ -110,7 +110,7 @@ These exist because each one was a way the earlier dashboard could mislead a rea
 - **Correlation confidence follows the p-value**, not the sample size, with a Bonferroni threshold across the whole hypothesis set. Pairs that share an input — picker productivity is volume ÷ mandays, so it shares a term with mandays variance — are labelled as confounded and ranked last.
 - **Scores decay, they do not flatline.** A shortfall halves the score every fixed number of points rather than clipping to zero, so metrics far below target still rank against each other. The previous linear penalty scored 0 on 100% of one warehouse's schedule-accuracy observations, freezing its risk row into a flat line.
 - **Evidence outranks defaults.** Initiatives linked to a recurring pain point fill the list first; baseline fallbacks only take leftover slots.
-- **The engine reconciles against the source.** Where the spreadsheet computes a metric itself, the engine's derivation is compared to it and a divergence above 2 pp raises a warning.
+- **The engine reconciles against the source.** Where the spreadsheet computes a metric itself, the engine's derivation is compared to it. Forecast accuracy warns above 2 pp; high-precision warehouse fulfillment warns above 0.05 pp.
 
 ## Quality gate
 

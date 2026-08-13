@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -134,7 +134,7 @@ function syncLabel(data: AnalysisPayload | null, error: string | null) {
 
 function fmtMetric(value: number | null, unit: AnalysisPayload["pivotRows"][number]["unit"]) {
   if (value === null) return "—";
-  if (unit === "percent") return `${value.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%`;
+  if (unit === "percent") return `${value.toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
   if (unit === "currency") return new Intl.NumberFormat("id-ID", { notation: "compact", maximumFractionDigits: 1 }).format(value);
   return value.toLocaleString("id-ID", { maximumFractionDigits: unit === "ratio" ? 1 : 0 });
 }
@@ -148,8 +148,8 @@ function FilterSelect({ label, value, onChange, children, disabled = false }: { 
   );
 }
 
-function DateField({ label, value, onChange, minimum, maximum, disabled = false }: { label: string; value: string; onChange: (value: string) => void; minimum?: string; maximum?: string; disabled?: boolean }) {
-  return <label className={`date-field${disabled ? " is-disabled" : ""}`}><span>{label}</span><div><CalendarDays size={15} /><input type="date" value={value} min={minimum} max={maximum} disabled={disabled} onChange={(event) => onChange(event.target.value)} /></div></label>;
+function DateField({ label, name, value, onChange, minimum, maximum, disabled = false }: { label: string; name: string; value: string; onChange: (value: string) => void; minimum?: string; maximum?: string; disabled?: boolean }) {
+  return <label className={`date-field${disabled ? " is-disabled" : ""}`}><span>{label}</span><div><CalendarDays size={15} /><input type="date" name={name} value={value} min={minimum} max={maximum} disabled={disabled} onChange={(event) => onChange(event.target.value)} /></div></label>;
 }
 
 function SectionHeader({ eyebrow, title, description, action }: { eyebrow: string; title: string; description?: string; action?: React.ReactNode }) {
@@ -351,7 +351,7 @@ function FlowIntelligence({ data }: { data: AnalysisPayload }) {
         <div className="panel chart-panel">
           <SectionHeader eyebrow="Loss volume" title="Di mana volume berkurang" description="Pisahkan loss dari demand, cancel, eksekusi WH, dan penerimaan hub." />
           <FulfillmentFunnelChart stages={data.fulfillmentFunnel} />
-          <div className="funnel-stage-strip">{data.fulfillmentFunnel.slice(1).map((stage) => <div key={stage.key}><span>{stage.label}</span><strong>{stage.conversionPct === null ? "—" : `${stage.conversionPct.toFixed(1)}%`}</strong><small>{stage.lossQty === null ? "Tidak ada pembanding" : `${stage.lossQty.toLocaleString("id-ID")} unit hilang`}</small></div>)}</div>
+          <div className="funnel-stage-strip">{data.fulfillmentFunnel.slice(1).map((stage) => <div key={stage.key}><span>{stage.label}</span><strong>{stage.conversionPct === null ? "—" : `${stage.conversionPct.toFixed(2)}%`}</strong><small>{stage.lossQty === null ? "Tidak ada pembanding" : `${stage.lossQty.toLocaleString("id-ID")} unit hilang`}</small></div>)}</div>
         </div>
         <div className="panel decision-sidebar">
           <SectionHeader eyebrow="Prioritas" title="Tindak kendala utama" />
@@ -621,6 +621,9 @@ export function DashboardShell() {
   const [role, setRole] = useState("All");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [draftStartDate, setDraftStartDate] = useState("");
+  const [draftEndDate, setDraftEndDate] = useState("");
+  const [filterError, setFilterError] = useState<string | null>(null);
   const [data, setData] = useState<AnalysisPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -685,24 +688,47 @@ export function DashboardShell() {
   const choosePreset = (nextPeriod: Period) => {
     setStartDate("");
     setEndDate("");
+    setDraftStartDate("");
+    setDraftEndDate("");
+    setFilterError(null);
     setPeriod(nextPeriod);
   };
 
   const changeStartDate = (value: string) => {
-    setStartDate(value);
-    setEndDate((current) => current || data?.context.rangeEnd || value);
-    setPeriod("custom");
+    setDraftStartDate(value);
+    setDraftEndDate((current) => current || endDate || data?.context.rangeEnd || value);
+    setFilterError(null);
   };
 
   const changeEndDate = (value: string) => {
-    setEndDate(value);
-    setStartDate((current) => current || data?.context.rangeStart || value);
+    setDraftEndDate(value);
+    setDraftStartDate((current) => current || startDate || data?.context.rangeStart || value);
+    setFilterError(null);
+  };
+
+  const applyDateRange = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    // Read the submitted controls as the source of truth. This also covers
+    // browser autofill and native date pickers that may commit on submit.
+    const formData = new FormData(event.currentTarget);
+    const nextStart = String(formData.get("startDate") || draftStartDate || startDate || data?.context.rangeStart || "");
+    const nextEnd = String(formData.get("endDate") || draftEndDate || endDate || data?.context.rangeEnd || "");
+    if (!nextStart || !nextEnd) return setFilterError("Isi tanggal mulai dan selesai.");
+    if (nextStart > nextEnd) return setFilterError("Tanggal mulai tidak boleh melewati tanggal selesai.");
+    const rangeDays = Math.floor((Date.parse(`${nextEnd}T00:00:00Z`) - Date.parse(`${nextStart}T00:00:00Z`)) / 86_400_000) + 1;
+    if (rangeDays > 180) return setFilterError("Rentang maksimum 180 hari.");
+    setStartDate(nextStart);
+    setEndDate(nextEnd);
+    setDraftStartDate("");
+    setDraftEndDate("");
+    setFilterError(null);
     setPeriod("custom");
   };
 
   const sourceState = syncLabel(data, error);
-  const visibleStart = startDate || data?.context.rangeStart || "";
-  const visibleEnd = endDate || data?.context.rangeEnd || "";
+  const visibleStart = draftStartDate || startDate || data?.context.rangeStart || "";
+  const visibleEnd = draftEndDate || endDate || data?.context.rangeEnd || "";
+  const hasPendingRange = Boolean(draftStartDate || draftEndDate);
 
   return (
     <div className={`app-shell${navCollapsed ? " app-shell--nav-collapsed" : ""}`}>
@@ -720,17 +746,24 @@ export function DashboardShell() {
         <div className="content-area">
           <div className="context-line"><span>{warehouse} · {periodLabels[period]}</span><span>{lastRefresh ? `Dicek ${lastRefresh.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}` : "Menyambungkan data"}</span></div>
           <section className={`filter-console${filtersOpen ? " is-open" : ""}`} aria-label="Filter analisis">
-            <div className="filter-console__title"><SlidersHorizontal size={18} /><div><strong>Filter</strong><span>Berlaku untuk semua halaman</span></div><div className="filter-summary" aria-label="Filter aktif"><span>{warehouse}</span><span>{periodLabels[period]}</span><span>{division === "All" ? "Semua fungsi" : division}</span></div><button type="button" className="filter-toggle" aria-expanded={filtersOpen} aria-controls="filter-console-body" onClick={() => setFiltersOpen((current) => !current)}>{filtersOpen ? "Tutup" : "Ubah"}<ChevronDown size={16} /></button></div>
-            <div className="filter-console__body" id="filter-console-body">
+            <div className="filter-console__title"><SlidersHorizontal size={18} /><div><strong>Filter</strong><span>WH dan tanggal berlaku di semua halaman</span></div><div className="filter-summary" aria-label="Filter aktif"><span>{warehouse}</span><span>{periodLabels[period]}</span>{period === "custom" && startDate && endDate && <span>{fmtDate(startDate)}–{fmtDate(endDate)}</span>}<span>{division === "All" ? "Semua fungsi" : division}</span></div><button type="button" className="filter-toggle" aria-expanded={filtersOpen} aria-controls="filter-console-body" onClick={() => setFiltersOpen((current) => !current)}>{filtersOpen ? "Tutup" : "Ubah"}<ChevronDown size={16} /></button></div>
+            <form className="filter-console__body" id="filter-console-body" onSubmit={applyDateRange}>
               <div className="filter-console__fields">
-              <FilterSelect label="Warehouse" value={warehouse} onChange={(value) => { setWarehouse(value as WarehouseCode); setDivision("All"); setRole("All"); setStartDate(""); setEndDate(""); setPeriod("weekly"); }}>{PRIORITY_WAREHOUSES.map((item) => <option value={item} key={item}>{item}</option>)}</FilterSelect>
+              <FilterSelect label="Warehouse" value={warehouse} onChange={(value) => { setWarehouse(value as WarehouseCode); setDivision("All"); setRole("All"); setStartDate(""); setEndDate(""); setDraftStartDate(""); setDraftEndDate(""); setFilterError(null); setPeriod("weekly"); }}>{PRIORITY_WAREHOUSES.map((item) => <option value={item} key={item}>{item}</option>)}</FilterSelect>
               <FilterSelect label="Fungsi" value={division} onChange={(value) => { setDivision(value); setRole("All"); }}><option value="All">Semua fungsi</option>{(data?.filters.divisions ?? []).map((item) => <option value={item} key={item}>{item}</option>)}</FilterSelect>
               <FilterSelect label="Peran" value={role} onChange={setRole} disabled={!data}><option value="All">Semua peran</option>{(data?.filters.rolesByDivision[division] ?? data?.filters.rolesByDivision.All ?? []).map((item) => <option value={item} key={item}>{item}</option>)}</FilterSelect>
-              <DateField label="Mulai" value={visibleStart} onChange={changeStartDate} minimum={data?.filters.minimumDate} maximum={visibleEnd || data?.filters.maximumDate} disabled={!data} />
-              <DateField label="Selesai" value={visibleEnd} onChange={changeEndDate} minimum={visibleStart || data?.filters.minimumDate} maximum={data?.filters.maximumDate} disabled={!data} />
+              <DateField label="Mulai" name="startDate" value={visibleStart} onChange={changeStartDate} minimum={data?.filters.minimumDate} maximum={visibleEnd || data?.filters.maximumDate} disabled={!data} />
+              <DateField label="Selesai" name="endDate" value={visibleEnd} onChange={changeEndDate} minimum={visibleStart || data?.filters.minimumDate} maximum={data?.filters.maximumDate} disabled={!data} />
               </div>
-              <div className="period-control"><span>Rentang cepat</span><div className="period-switcher" aria-label="Pilih rentang cepat">{presetPeriods.map((key) => <button type="button" className={period === key && !startDate ? "active" : ""} aria-pressed={period === key && !startDate} onClick={() => choosePreset(key)} key={key}>{key === "daily" ? "1 hari" : key === "weekly" ? "7 hari" : "30 hari"}</button>)}</div></div>
-            </div>
+              <div className="filter-range-actions">
+                <div className="period-control"><span>Rentang cepat</span><div className="period-switcher" aria-label="Pilih rentang cepat">{presetPeriods.map((key) => <button type="button" className={period === key && !startDate ? "active" : ""} aria-pressed={period === key && !startDate} onClick={() => choosePreset(key)} key={key}>{key === "daily" ? "1 hari" : key === "weekly" ? "7 hari" : "30 hari"}</button>)}</div></div>
+                <div className="date-apply-group">
+                  {hasPendingRange && <button type="button" className="date-cancel-button" onClick={() => { setDraftStartDate(""); setDraftEndDate(""); setFilterError(null); }}>Batal</button>}
+                  <button type="submit" className="date-apply-button" disabled={!visibleStart || !visibleEnd}>Terapkan rentang</button>
+                </div>
+              </div>
+              {filterError && <p className="filter-error" role="alert">{filterError}</p>}
+            </form>
           </section>
 
           <div id="workspace-content" className="workspace-content" ref={workspaceRef} tabIndex={-1} aria-live="polite" aria-label={nav.find((item) => item.id === view)?.label}>

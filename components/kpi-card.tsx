@@ -5,7 +5,10 @@ import type { MetricReading, Severity } from "@/lib/types";
 
 function formatValue(metric: MetricReading): string {
   if (metric.value === null) return "–";
-  if (metric.unit === "percent" || metric.unit === "ratio") return `${metric.value.toFixed(1)}%`;
+  if (metric.unit === "percent" || metric.unit === "ratio") {
+    const precision = metric.key === "fulfillment_rate" ? 2 : 1;
+    return `${metric.value.toFixed(precision)}%`;
+  }
   if (metric.unit === "mandays") return metric.value.toLocaleString("id-ID", { maximumFractionDigits: 1 });
   if (metric.unit === "currency") return new Intl.NumberFormat("id-ID", { notation: "compact", style: "currency", currency: "IDR" }).format(metric.value);
   return new Intl.NumberFormat("id-ID", { notation: "compact", maximumFractionDigits: 1 }).format(metric.value);

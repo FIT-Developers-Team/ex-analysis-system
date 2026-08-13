@@ -18,18 +18,28 @@ import type {
 
 const ReactECharts = dynamic(() => import("echarts-for-react"), { ssr: false });
 
-const palette = ["#2563eb", "#0f9f8f", "#f0a229", "#e36a50", "#768b47", "#af5d86", "#516170"];
-const axis = { axisLine: { lineStyle: { color: "#dbe3ee" } }, axisTick: { show: false }, axisLabel: { color: "#54637a", fontSize: 11 } };
-const split = { lineStyle: { color: "#eaeff5" } };
-const tooltip = { backgroundColor: "#10213a", borderWidth: 0, textStyle: { color: "#fff", fontFamily: "Inter, system-ui, sans-serif", fontSize: 11 }, extraCssText: "border-radius:8px;box-shadow:0 12px 30px rgba(16,33,58,.18)" };
-const number = (value: number | null | undefined) => value == null ? "—" : value.toLocaleString("id-ID", { maximumFractionDigits: 1 });
+const palette = ["#1d4ed8", "#0f8f82", "#d8890b", "#d95d45", "#667f36", "#9b4f79", "#475569"];
+const axis = { axisLine: { show: true, lineStyle: { color: "#cbd5e1", width: 1 } }, axisTick: { show: false }, axisLabel: { color: "#475569", fontSize: 11, hideOverlap: true } };
+const split = { lineStyle: { color: "#e2e8f0", type: "dashed" as const, width: 1 } };
+const tooltip = {
+  backgroundColor: "#0f1f35",
+  borderColor: "#31445f",
+  borderWidth: 1,
+  confine: true,
+  textStyle: { color: "#fff", fontFamily: "Inter, system-ui, sans-serif", fontSize: 12, lineHeight: 19 },
+  extraCssText: "border-radius:10px;box-shadow:0 16px 36px rgba(15,31,53,.24);padding:10px 12px",
+};
+const number = (value: number | null | undefined, precision = 0) => value == null ? "—" : value.toLocaleString("id-ID", { minimumFractionDigits: precision, maximumFractionDigits: precision });
+const percent = (value: number | null | undefined, precision = 2) => value == null ? "—" : `${number(value, precision)}%`;
+const dateInterval = (length: number) => length <= 10 ? 0 : Math.max(1, Math.ceil(length / 7) - 1);
+const pointVisibility = (length: number) => length <= 14;
 
 function Chart({ option, height = 320 }: { option: Record<string, unknown>; height?: number }) {
   const accessibleOption = {
     aria: { enabled: true, decal: { show: true } },
     ...option,
   };
-  return <div className="chart-frame" style={{ "--chart-height": `${height}px` } as CSSProperties}><ReactECharts option={accessibleOption} style={{ height: "100%", width: "100%" }} notMerge lazyUpdate /></div>;
+  return <div className="chart-frame" style={{ "--chart-height": `${height}px` } as CSSProperties}><ReactECharts option={accessibleOption} style={{ height: "100%", width: "100%" }} opts={{ renderer: "canvas" }} notMerge lazyUpdate /></div>;
 }
 
 export function TrendChart({ series }: { series: TrendSeries[] }) {
@@ -37,12 +47,23 @@ export function TrendChart({ series }: { series: TrendSeries[] }) {
   return <Chart height={330} option={{
     color: palette,
     animationDuration: 350,
-    tooltip: { ...tooltip, trigger: "axis", valueFormatter: (value: number | null) => value === null ? "—" : `${Number(value).toFixed(1)}%` },
-    legend: { top: 0, left: 0, itemWidth: 17, itemHeight: 3, textStyle: { color: "#54637a", fontSize: 11 } },
-    grid: { left: 54, right: 22, top: 52, bottom: 34 },
-    xAxis: { type: "category", data: dates, boundaryGap: false, ...axis, axisLabel: { color: "#54637a", fontSize: 11, formatter: (value: string) => value.slice(5), interval: 4 } },
-    yAxis: { type: "value", min: 0, max: (value: { max: number }) => Math.max(110, Math.ceil(value.max / 10) * 10), axisLabel: { color: "#54637a", fontSize: 11, formatter: "{value}%" }, splitLine: split },
-    series: series.map((item, index) => ({ name: item.label, type: "line", data: item.values.map((point) => point.value === null ? null : Number(point.value.toFixed(2))), connectNulls: false, showSymbol: false, smooth: 0.2, lineStyle: { width: index === 0 ? 2.6 : 1.8, type: index > 3 ? "dashed" : "solid" }, emphasis: { focus: "series" } })),
+    tooltip: { ...tooltip, trigger: "axis", axisPointer: { type: "line", lineStyle: { color: "#64748b", type: "dashed" } }, valueFormatter: (value: number | null) => percent(value, 2) },
+    legend: { top: 0, left: 0, itemWidth: 22, itemHeight: 4, itemGap: 16, textStyle: { color: "#475569", fontSize: 11 } },
+    grid: { left: 58, right: 28, top: 58, bottom: 38 },
+    xAxis: { type: "category", data: dates, boundaryGap: false, ...axis, axisLabel: { color: "#475569", fontSize: 11, formatter: (value: string) => value.slice(5), interval: dateInterval(dates.length), hideOverlap: true } },
+    yAxis: { type: "value", min: 0, max: (value: { max: number }) => Math.max(110, Math.ceil(value.max / 10) * 10), axisLabel: { color: "#475569", fontSize: 11, formatter: "{value}%" }, splitLine: split },
+    series: series.map((item, index) => ({
+      name: item.label,
+      type: "line",
+      data: item.values.map((point) => point.value === null ? null : Number(point.value.toFixed(2))),
+      connectNulls: false,
+      showSymbol: pointVisibility(dates.length),
+      symbol: index % 2 === 0 ? "circle" : "emptyCircle",
+      symbolSize: 6,
+      smooth: false,
+      lineStyle: { width: index === 0 ? 3 : 2.4, type: index === 2 ? "dashed" : "solid" },
+      emphasis: { focus: "series", scale: 1.4, lineStyle: { width: 4 } },
+    })),
   }} />;
 }
 
@@ -53,20 +74,40 @@ export function VolumeFlowChart({ points, mode }: { points: VolumeFlowPoint[]; m
   ] as const;
   const outbound = [
     { name: "Forecast", key: "outboundForecast", color: palette[0], type: "line" },
-    { name: "Before cancel", key: "beforeCancel", color: palette[2], type: "line" },
-    { name: "After cancel", key: "afterCancel", color: palette[3], type: "line" },
+    { name: "Request sebelum cancel", key: "beforeCancel", color: palette[2], type: "line" },
+    { name: "Request setelah cancel", key: "afterCancel", color: palette[3], type: "line" },
     { name: "RTS", key: "rts", color: palette[1], type: "bar" },
-    { name: "Hub received", key: "hubReceived", color: palette[4], type: "line" },
+    { name: "Diterima hub", key: "hubReceived", color: palette[4], type: "line" },
   ] as const;
   const definitions = mode === "inbound" ? inbound : outbound;
+  const zoomed = points.length > 45;
   return <Chart height={350} option={{
     animationDuration: 350,
-    tooltip: { ...tooltip, trigger: "axis" },
-    legend: { top: 0, left: 0, itemWidth: 16, itemHeight: 4, textStyle: { color: "#54637a", fontSize: 11 } },
-    grid: { left: 70, right: 24, top: 52, bottom: 36 },
-    xAxis: { type: "category", data: points.map((point) => point.date), ...axis, axisLabel: { color: "#54637a", fontSize: 11, formatter: (value: string) => value.slice(5), interval: 3 } },
-    yAxis: { type: "value", ...axis, axisLabel: { color: "#54637a", fontSize: 11, formatter: (value: number) => Intl.NumberFormat("id-ID", { notation: "compact" }).format(value) }, splitLine: split },
-    series: definitions.map((definition) => ({ name: definition.name, type: definition.type, data: points.map((point) => point[definition.key]), itemStyle: { color: definition.color, borderRadius: definition.type === "bar" ? [3, 3, 0, 0] : 0 }, lineStyle: { color: definition.color, width: 2 }, showSymbol: false, smooth: 0.16, barMaxWidth: 13, connectNulls: false })),
+    tooltip: {
+      ...tooltip,
+      trigger: "axis",
+      axisPointer: { type: "cross", lineStyle: { color: "#64748b", type: "dashed" }, crossStyle: { color: "#64748b" } },
+      valueFormatter: (value: number | null) => number(value, 0),
+    },
+    legend: { top: 0, left: 0, itemWidth: 22, itemHeight: 4, itemGap: 14, textStyle: { color: "#475569", fontSize: 11 } },
+    grid: { left: 72, right: 28, top: 58, bottom: zoomed ? 68 : 38 },
+    xAxis: { type: "category", data: points.map((point) => point.date), ...axis, axisLabel: { color: "#475569", fontSize: 11, formatter: (value: string) => value.slice(5), interval: dateInterval(points.length), hideOverlap: true } },
+    yAxis: { type: "value", min: 0, ...axis, axisLabel: { color: "#475569", fontSize: 11, formatter: (value: number) => Intl.NumberFormat("id-ID", { notation: "compact" }).format(value) }, splitLine: split },
+    dataZoom: zoomed ? [{ type: "inside", filterMode: "none" }, { type: "slider", height: 16, bottom: 8, borderColor: "#cbd5e1", fillerColor: "rgba(29,78,216,.12)", handleStyle: { color: palette[0] } }] : undefined,
+    series: definitions.map((definition, index) => ({
+      name: definition.name,
+      type: definition.type,
+      data: points.map((point) => point[definition.key]),
+      itemStyle: { color: definition.color, opacity: definition.type === "bar" ? 0.82 : 1, borderColor: definition.color, borderWidth: definition.type === "bar" ? 1 : 0, borderRadius: definition.type === "bar" ? [4, 4, 0, 0] : 0 },
+      lineStyle: { color: definition.color, width: index === 0 ? 3 : 2.4, type: index === 0 || index === 2 ? "dashed" : "solid" },
+      showSymbol: definition.type === "line" && pointVisibility(points.length),
+      symbol: index % 2 === 0 ? "circle" : "emptyCircle",
+      symbolSize: 6,
+      smooth: false,
+      barMaxWidth: 16,
+      connectNulls: false,
+      emphasis: { focus: "series", scale: 1.25, lineStyle: { width: 4 } },
+    })),
   }} />;
 }
 
@@ -75,11 +116,11 @@ export function FulfillmentFunnelChart({ stages }: { stages: FlowStage[] }) {
   const max = Math.max(1, ...available.map((stage) => stage.value ?? 0));
   return <Chart height={318} option={{
     animationDuration: 350,
-    tooltip: { ...tooltip, trigger: "item", formatter: (params: { name: string; value: number; dataIndex: number }) => { const stage = available[params.dataIndex]; return `<strong>${params.name}</strong><br/>Qty ${number(params.value)}<br/>Step conversion ${number(stage?.conversionPct)}%<br/>Loss ${number(stage?.lossQty)}`; } },
-    grid: { left: 164, right: 44, top: 10, bottom: 24 },
-    xAxis: { type: "value", max, axisLabel: { color: "#54637a", fontSize: 11, formatter: (value: number) => Intl.NumberFormat("id-ID", { notation: "compact" }).format(value) }, splitLine: split },
-    yAxis: { type: "category", inverse: true, data: available.map((stage) => stage.label), axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: "#33445c", fontSize: 11 } },
-    series: [{ type: "bar", barWidth: 21, data: available.map((stage) => ({ value: stage.value, itemStyle: { color: stage.status === "critical" ? palette[3] : stage.status === "watch" ? palette[2] : palette[0], borderRadius: [0, 5, 5, 0] }, label: { show: true, position: "right", color: "#33445c", fontSize: 11, fontWeight: 700, formatter: ({ value }: { value: number }) => Intl.NumberFormat("id-ID", { notation: "compact", maximumFractionDigits: 1 }).format(value) } })) }],
+    tooltip: { ...tooltip, trigger: "item", formatter: (params: { name: string; value: number; dataIndex: number }) => { const stage = available[params.dataIndex]; return `<strong>${params.name}</strong><br/>Volume <strong>${number(params.value)}</strong><br/>Konversi tahap ${percent(stage?.conversionPct, 2)}<br/>Loss ${number(stage?.lossQty)}`; } },
+    grid: { left: 180, right: 92, top: 12, bottom: 30 },
+    xAxis: { type: "value", min: 0, max, axisLabel: { color: "#475569", fontSize: 11, formatter: (value: number) => Intl.NumberFormat("id-ID", { notation: "compact" }).format(value) }, splitLine: split },
+    yAxis: { type: "category", inverse: true, data: available.map((stage) => stage.label), axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: "#334155", fontSize: 11, fontWeight: 600 } },
+    series: [{ type: "bar", barWidth: 22, data: available.map((stage) => ({ value: stage.value, itemStyle: { color: stage.status === "critical" ? palette[3] : stage.status === "watch" ? palette[2] : palette[0], borderColor: stage.status === "critical" ? "#a83f2c" : stage.status === "watch" ? "#a66100" : "#173fa5", borderWidth: 1, borderRadius: [0, 5, 5, 0] }, label: { show: true, position: "right", distance: 8, color: "#334155", fontSize: 11, fontWeight: 700, formatter: ({ value }: { value: number }) => number(value) } })), emphasis: { focus: "self", itemStyle: { shadowBlur: 10, shadowColor: "rgba(15,31,53,.18)" } } }],
   }} />;
 }
 
@@ -95,17 +136,17 @@ export function LaborBalanceChart({ points }: { points: LaborBalancePoint[] }) {
       formatter: (params: Array<{ dataIndex: number; marker: string; seriesName: string; value: number | null }>) => {
         const index = params[0]?.dataIndex ?? 0;
         const point = points[index];
-        const rows = params.map((item) => `${item.marker}${item.seriesName}: <strong>${item.value === null ? "—" : `${Number(item.value).toFixed(1)}%`}</strong>`).join("<br/>");
-        return `${point?.date ?? ""}<br/>${rows}<br/><span style="color:#c3ccd6">Actual ${number(point?.actualMandays)} MD · Budget ${number(point?.budgetMandays)} MD</span>`;
+        const rows = params.map((item) => `${item.marker}${item.seriesName}: <strong>${percent(item.value, 1)}</strong>`).join("<br/>");
+        return `<strong>${point?.date ?? ""}</strong><br/>${rows}<br/><span style="color:#c3ccd6">Actual ${number(point?.actualMandays, 1)} MD · Budget ${number(point?.budgetMandays, 1)} MD</span>`;
       },
     },
-    legend: { top: 0, left: 0, itemWidth: 16, itemHeight: 4, textStyle: { color: "#54637a", fontSize: 11 } },
+    legend: { top: 0, left: 0, itemWidth: 22, itemHeight: 4, itemGap: 16, textStyle: { color: "#475569", fontSize: 11 } },
     grid: { left: 58, right: 76, top: 52, bottom: 36 },
-    xAxis: { type: "category", data: points.map((point) => point.date), ...axis, axisLabel: { color: "#54637a", fontSize: 11, formatter: (value: string) => value.slice(5), interval: 3 } },
-    yAxis: { type: "value", min: 0, max: (value: { max: number }) => Math.max(120, Math.ceil(value.max / 10) * 10), axisLabel: { color: "#54637a", fontSize: 11, formatter: "{value}%" }, splitLine: split },
+    xAxis: { type: "category", data: points.map((point) => point.date), ...axis, axisLabel: { color: "#475569", fontSize: 11, formatter: (value: string) => value.slice(5), interval: dateInterval(points.length), hideOverlap: true } },
+    yAxis: { type: "value", min: 0, max: (value: { max: number }) => Math.max(120, Math.ceil(value.max / 10) * 10), axisLabel: { color: "#475569", fontSize: 11, formatter: "{value}%" }, splitLine: split },
     series: [
-      { name: "Pemakaian MD", type: "bar", data: usage, barMaxWidth: 14, itemStyle: { color: "#bfd0f8", borderColor: palette[0], borderWidth: 1, borderRadius: [3, 3, 0, 0] } },
-      { name: "Produktivitas", type: "line", data: points.map((point) => point.productivity), showSymbol: false, connectNulls: false, lineStyle: { color: palette[3], width: 2.2 }, itemStyle: { color: palette[3] }, markLine: { symbol: "none", silent: true, lineStyle: { color: "#5f6d80", type: "dashed", opacity: 0.7 }, data: [{ yAxis: 100, label: { formatter: "acuan 100%", color: "#54637a", fontSize: 10 } }] } },
+      { name: "Pemakaian MD", type: "bar", data: usage, barMaxWidth: 16, itemStyle: { color: "#c8d7fb", borderColor: palette[0], borderWidth: 1, borderRadius: [4, 4, 0, 0] }, emphasis: { focus: "series" } },
+      { name: "Produktivitas", type: "line", data: points.map((point) => point.productivity), showSymbol: pointVisibility(points.length), symbol: "circle", symbolSize: 6, connectNulls: false, smooth: false, lineStyle: { color: palette[3], width: 3 }, itemStyle: { color: palette[3] }, emphasis: { focus: "series", scale: 1.35, lineStyle: { width: 4 } }, markLine: { symbol: "none", silent: true, lineStyle: { color: "#475569", type: "dashed", opacity: 0.85 }, data: [{ yAxis: 100, label: { formatter: "acuan 100%", color: "#475569", fontSize: 10 } }] } },
     ],
   }} />;
 }
@@ -118,12 +159,12 @@ export function CapacityHistoryChart({ points }: { points: CapacityHistoryPoint[
   ] as const;
   return <Chart height={340} option={{
     animationDuration: 350,
-    tooltip: { ...tooltip, trigger: "axis", valueFormatter: (value: number | null) => value == null ? "—" : `${Number(value).toFixed(1)}%` },
-    legend: { top: 0, left: 0, itemWidth: 16, itemHeight: 4, textStyle: { color: "#54637a", fontSize: 11 } },
+    tooltip: { ...tooltip, trigger: "axis", axisPointer: { type: "line", lineStyle: { color: "#64748b", type: "dashed" } }, valueFormatter: (value: number | null) => percent(value, 1) },
+    legend: { top: 0, left: 0, itemWidth: 22, itemHeight: 4, itemGap: 16, textStyle: { color: "#475569", fontSize: 11 } },
     grid: { left: 54, right: 76, top: 50, bottom: 34 },
-    xAxis: { type: "category", data: points.map((point) => point.date), boundaryGap: false, ...axis, axisLabel: { color: "#54637a", fontSize: 11, formatter: (value: string) => value.slice(5), interval: 3 } },
-    yAxis: { type: "value", min: 0, max: (value: { max: number }) => Math.max(100, Math.ceil(value.max / 10) * 10), axisLabel: { color: "#54637a", fontSize: 11, formatter: "{value}%" }, splitLine: split },
-    series: definitions.map((definition, index) => ({ name: definition.name, type: "line", data: points.map((point) => point[definition.key]), showSymbol: false, connectNulls: false, smooth: 0.18, lineStyle: { width: 2, color: definition.color }, itemStyle: { color: definition.color }, areaStyle: { color: definition.color, opacity: 0.035 }, markLine: index === 0 ? { symbol: "none", silent: true, lineStyle: { type: "dashed" }, data: [{ yAxis: 85, lineStyle: { color: palette[2] }, label: { formatter: "warning 85", color: "#855309", fontSize: 10 } }, { yAxis: 92, lineStyle: { color: palette[3] }, label: { formatter: "critical 92", color: "#9d3a26", fontSize: 10 } }] } : undefined })),
+    xAxis: { type: "category", data: points.map((point) => point.date), boundaryGap: false, ...axis, axisLabel: { color: "#475569", fontSize: 11, formatter: (value: string) => value.slice(5), interval: dateInterval(points.length), hideOverlap: true } },
+    yAxis: { type: "value", min: 0, max: (value: { max: number }) => Math.max(100, Math.ceil(value.max / 10) * 10), axisLabel: { color: "#475569", fontSize: 11, formatter: "{value}%" }, splitLine: split },
+    series: definitions.map((definition, index) => ({ name: definition.name, type: "line", data: points.map((point) => point[definition.key]), showSymbol: pointVisibility(points.length), symbol: index === 0 ? "circle" : index === 1 ? "emptyCircle" : "diamond", symbolSize: 6, connectNulls: false, smooth: false, lineStyle: { width: 2.7, color: definition.color, type: index === 1 ? "dashed" : index === 2 ? "dotted" : "solid" }, itemStyle: { color: definition.color }, emphasis: { focus: "series", scale: 1.35, lineStyle: { width: 4 } }, markLine: index === 0 ? { symbol: "none", silent: true, lineStyle: { type: "dashed" }, data: [{ yAxis: 85, lineStyle: { color: palette[2] }, label: { formatter: "waspada 85%", color: "#855309", fontSize: 10 } }, { yAxis: 92, lineStyle: { color: palette[3] }, label: { formatter: "kritis 92%", color: "#9d3a26", fontSize: 10 } }] } : undefined })),
   }} />;
 }
 
@@ -131,11 +172,11 @@ export function RelationshipChart({ signals }: { signals: RelationshipSignal[] }
   const data = [...signals].filter((signal) => signal.coefficient !== null).sort((a, b) => (a.coefficient ?? 0) - (b.coefficient ?? 0));
   return <Chart height={Math.max(330, data.length * 42)} option={{
     animationDuration: 350,
-    tooltip: { ...tooltip, trigger: "item", formatter: (params: { dataIndex: number; value: number }) => { const signal = data[params.dataIndex]; return `<strong>${signal.driverLabel} → ${signal.outcomeLabel}</strong><br/>r ${Number(params.value).toFixed(2)} · n ${signal.sampleSize}<br/>${signal.strength} · keyakinan ${signal.confidence}<br/>${signal.alignment}`; } },
-    grid: { left: 220, right: 62, top: 18, bottom: 34 },
-    xAxis: { type: "value", min: -1, max: 1, axisLabel: { color: "#54637a", fontSize: 11 }, splitLine: split },
-    yAxis: { type: "category", data: data.map((signal) => `${signal.driverLabel} → ${signal.outcomeLabel}`), axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: "#33445c", fontSize: 11, width: 204, overflow: "truncate" } },
-    series: [{ type: "bar", barWidth: 13, data: data.map((signal) => ({ value: signal.coefficient, itemStyle: { color: signal.alignment === "supports" ? palette[0] : signal.alignment === "contradicts" ? palette[2] : "#7d8a9c", borderRadius: signal.coefficient && signal.coefficient < 0 ? [4, 0, 0, 4] : [0, 4, 4, 0] }, label: { show: true, position: signal.coefficient && signal.coefficient < 0 ? "left" : "right", color: "#33445c", fontSize: 11, formatter: ({ value }: { value: number }) => Number(value).toFixed(2) } })), markLine: { symbol: "none", silent: true, lineStyle: { color: "#5f6d80" }, data: [{ xAxis: 0 }] } }],
+    tooltip: { ...tooltip, trigger: "item", formatter: (params: { dataIndex: number; value: number }) => { const signal = data[params.dataIndex]; return `<strong>${signal.driverLabel} → ${signal.outcomeLabel}</strong><br/>Korelasi <strong>r ${Number(params.value).toFixed(2)}</strong> · ${signal.sampleSize} hari<br/>${signal.strength} · keyakinan ${signal.confidence}<br/>${signal.alignment}`; } },
+    grid: { left: 224, right: 70, top: 22, bottom: 40 },
+    xAxis: { type: "value", min: -1, max: 1, axisLabel: { color: "#475569", fontSize: 11, formatter: (value: number) => value.toFixed(1) }, splitLine: split },
+    yAxis: { type: "category", data: data.map((signal) => `${signal.driverLabel} → ${signal.outcomeLabel}`), axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: "#334155", fontSize: 11, width: 208, overflow: "truncate" } },
+    series: [{ type: "bar", barWidth: 15, data: data.map((signal) => ({ value: signal.coefficient, itemStyle: { color: signal.alignment === "supports" ? palette[0] : signal.alignment === "contradicts" ? palette[2] : "#64748b", borderColor: signal.alignment === "supports" ? "#173fa5" : signal.alignment === "contradicts" ? "#a66100" : "#475569", borderWidth: 1, borderRadius: signal.coefficient && signal.coefficient < 0 ? [4, 0, 0, 4] : [0, 4, 4, 0] }, label: { show: true, position: signal.coefficient && signal.coefficient < 0 ? "left" : "right", distance: 7, color: "#334155", fontSize: 11, fontWeight: 700, formatter: ({ value }: { value: number }) => Number(value).toFixed(2) } })), emphasis: { focus: "self", itemStyle: { shadowBlur: 9, shadowColor: "rgba(15,31,53,.16)" } }, markLine: { symbol: "none", silent: true, lineStyle: { color: "#475569", width: 1.2 }, data: [{ xAxis: 0 }] } }],
   }} />;
 }
 
@@ -145,10 +186,10 @@ export function RiskHeatmapChart({ matrix }: { matrix: RiskMatrix }) {
     animationDuration: 350,
     tooltip: { ...tooltip, position: "top", formatter: (params: { value: [number, number, number] }) => `${matrix.rows[params.value[1]]?.domain}<br/><strong>Risiko ${params.value[2]}/100</strong><br/>${matrix.weeks[params.value[0]]}` },
     grid: { left: 110, right: 22, top: 20, bottom: 62 },
-    xAxis: { type: "category", data: matrix.weeks, splitArea: { show: true, areaStyle: { color: ["#fbfcfe", "#f6f8fb"] } }, axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: "#54637a", fontSize: 10, rotate: 28 } },
-    yAxis: { type: "category", data: matrix.rows.map((row) => row.domain), splitArea: { show: true }, axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: "#33445c", fontSize: 11 } },
-    visualMap: { min: 0, max: 80, show: false, inRange: { color: ["#eef4ff", "#bad0fa", "#f6d291", "#e36a50"] } },
-    series: [{ type: "heatmap", data, label: { show: true, color: "#10213a", fontSize: 10, formatter: ({ value }: { value: [number, number, number] }) => value[2] }, itemStyle: { borderColor: "#fff", borderWidth: 3, borderRadius: 5 }, emphasis: { itemStyle: { shadowBlur: 8, shadowColor: "rgba(16,33,58,.18)" } } }],
+    xAxis: { type: "category", data: matrix.weeks, splitArea: { show: true, areaStyle: { color: ["#fbfcfe", "#f6f8fb"] } }, axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: "#475569", fontSize: 10, rotate: 28, hideOverlap: true } },
+    yAxis: { type: "category", data: matrix.rows.map((row) => row.domain), splitArea: { show: true }, axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: "#334155", fontSize: 11, fontWeight: 600 } },
+    visualMap: { min: 0, max: 80, show: false, inRange: { color: ["#eef4ff", "#9fbcf5", "#f3c66f", "#d95d45"] } },
+    series: [{ type: "heatmap", data, label: { show: true, color: "#0f1f35", fontSize: 10, fontWeight: 650, formatter: ({ value }: { value: [number, number, number] }) => value[2] }, itemStyle: { borderColor: "#fff", borderWidth: 3, borderRadius: 5 }, emphasis: { itemStyle: { shadowBlur: 10, shadowColor: "rgba(15,31,53,.22)", borderColor: "#0f1f35", borderWidth: 2 } } }],
   }} />;
 }
 
@@ -159,9 +200,9 @@ export function InitiativePriorityChart({ initiatives }: { initiatives: Initiati
     animationDuration: 350,
     tooltip: { ...tooltip, formatter: (params: { dataIndex: number }) => { const item = items[params.dataIndex]; return `<strong>${item.title}</strong><br/>Prioritas ${item.priorityScore}/100<br/>Usaha ${effortLabel[item.effort]} · ${item.horizonDays} hari<br/>Owner ${item.owner}`; } },
     grid: { left: 190, right: 46, top: 12, bottom: 34 },
-    xAxis: { type: "value", min: 0, max: 100, axisLabel: { color: "#54637a", fontSize: 11 }, splitLine: split },
-    yAxis: { type: "category", inverse: true, data: items.map((item) => item.title), axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: "#33445c", fontSize: 11, width: 174, overflow: "truncate" } },
-    series: [{ type: "bar", barWidth: 16, data: items.map((item) => ({ value: item.priorityScore, itemStyle: { color: item.type === "stabilize" ? palette[0] : item.type === "optimize" ? palette[1] : palette[2], borderRadius: [0, 4, 4, 0] }, label: { show: true, position: "right", color: "#10213a", fontSize: 11, fontWeight: 700, formatter: `${item.priorityScore}` } })), markLine: { symbol: "none", silent: true, data: [{ xAxis: 65, lineStyle: { color: palette[2], type: "dashed" }, label: { formatter: "mulai", color: "#855309", fontSize: 10 } }] } }],
+    xAxis: { type: "value", min: 0, max: 100, axisLabel: { color: "#475569", fontSize: 11 }, splitLine: split },
+    yAxis: { type: "category", inverse: true, data: items.map((item) => item.title), axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: "#334155", fontSize: 11, width: 174, overflow: "truncate" } },
+    series: [{ type: "bar", barWidth: 17, data: items.map((item) => ({ value: item.priorityScore, itemStyle: { color: item.type === "stabilize" ? palette[0] : item.type === "optimize" ? palette[1] : palette[2], borderColor: item.type === "stabilize" ? "#173fa5" : item.type === "optimize" ? "#0b6e65" : "#a66100", borderWidth: 1, borderRadius: [0, 4, 4, 0] }, label: { show: true, position: "right", distance: 7, color: "#0f1f35", fontSize: 11, fontWeight: 700, formatter: `${item.priorityScore}` } })), emphasis: { focus: "self", itemStyle: { shadowBlur: 9, shadowColor: "rgba(15,31,53,.16)" } }, markLine: { symbol: "none", silent: true, data: [{ xAxis: 65, lineStyle: { color: palette[2], type: "dashed" }, label: { formatter: "mulai 65", color: "#855309", fontSize: 10 } }] } }],
   }} />;
 }
 
@@ -174,9 +215,9 @@ export function SimulationImpactChart({ result }: { result: SimulationResult }) 
     animationDuration: 220,
     tooltip: { ...tooltip, trigger: "axis", axisPointer: { type: "shadow" }, valueFormatter: (value: number) => `${Number(value).toFixed(1)} pp` },
     grid: { left: 124, right: 40, top: 10, bottom: 26 },
-    xAxis: { type: "value", min: -max, max, axisLabel: { color: "#54637a", fontSize: 11, formatter: "{value} pp" }, splitLine: split },
-    yAxis: { type: "category", data: data.map((item) => item[0]), axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: "#33445c", fontSize: 11 } },
-    series: [{ type: "bar", barWidth: 15, data: data.map((item) => ({ value: item[1], itemStyle: { color: item[1] < 0 ? palette[3] : palette[0], borderRadius: item[1] < 0 ? [4, 0, 0, 4] : [0, 4, 4, 0] }, label: { show: true, position: item[1] < 0 ? "left" : "right", color: "#33445c", fontSize: 11, formatter: `${item[1] > 0 ? "+" : ""}${item[1].toFixed(1)}` } })), markLine: { symbol: "none", silent: true, data: [{ xAxis: 0 }], lineStyle: { color: "#5f6d80" } } }],
+    xAxis: { type: "value", min: -max, max, axisLabel: { color: "#475569", fontSize: 11, formatter: "{value} pp" }, splitLine: split },
+    yAxis: { type: "category", data: data.map((item) => item[0]), axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: "#334155", fontSize: 11, fontWeight: 600 } },
+    series: [{ type: "bar", barWidth: 16, data: data.map((item) => ({ value: item[1], itemStyle: { color: item[1] < 0 ? palette[3] : palette[0], borderColor: item[1] < 0 ? "#a83f2c" : "#173fa5", borderWidth: 1, borderRadius: item[1] < 0 ? [4, 0, 0, 4] : [0, 4, 4, 0] }, label: { show: true, position: item[1] < 0 ? "left" : "right", distance: 7, color: "#334155", fontSize: 11, fontWeight: 700, formatter: `${item[1] > 0 ? "+" : ""}${item[1].toFixed(1)}` } })), emphasis: { focus: "self" }, markLine: { symbol: "none", silent: true, data: [{ xAxis: 0 }], lineStyle: { color: "#475569", width: 1.2 } } }],
   }} />;
 }
 
@@ -186,9 +227,9 @@ export function DriverChart({ drivers }: { drivers: DriverSignal[] }) {
     animationDuration: 350,
     tooltip: { ...tooltip, trigger: "axis", axisPointer: { type: "shadow" }, formatter: (params: Array<{ name: string; value: number }>) => `${params[0]?.name}<br/><strong>${params[0]?.value}/100</strong>` },
     grid: { left: 148, right: 38, top: 10, bottom: 28 },
-    xAxis: { type: "value", min: 0, max: 100, axisLabel: { color: "#54637a", fontSize: 11 }, splitLine: split },
-    yAxis: { type: "category", data: sorted.map((item) => item.label), axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: "#54637a", fontSize: 11, width: 136, overflow: "truncate" } },
-    series: [{ type: "bar", barWidth: 12, data: sorted.map((item) => ({ value: item.score, itemStyle: { color: item.score < 65 ? palette[3] : item.score < 85 ? palette[2] : palette[0], borderRadius: [0, 4, 4, 0] }, label: { show: true, position: "right", color: "#10213a", fontSize: 11, fontWeight: 700 } })), markLine: { silent: true, symbol: "none", lineStyle: { color: "#5f6d80", type: "dashed" }, data: [{ xAxis: 85, label: { formatter: "control", color: "#54637a", fontSize: 10 } }] } }],
+    xAxis: { type: "value", min: 0, max: 100, axisLabel: { color: "#475569", fontSize: 11 }, splitLine: split },
+    yAxis: { type: "category", data: sorted.map((item) => item.label), axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: "#475569", fontSize: 11, width: 136, overflow: "truncate" } },
+    series: [{ type: "bar", barWidth: 14, data: sorted.map((item) => ({ value: item.score, itemStyle: { color: item.score < 65 ? palette[3] : item.score < 85 ? palette[2] : palette[0], borderColor: item.score < 65 ? "#a83f2c" : item.score < 85 ? "#a66100" : "#173fa5", borderWidth: 1, borderRadius: [0, 4, 4, 0] }, label: { show: true, position: "right", distance: 7, color: "#0f1f35", fontSize: 11, fontWeight: 700 } })), emphasis: { focus: "self" }, markLine: { silent: true, symbol: "none", lineStyle: { color: "#475569", type: "dashed" }, data: [{ xAxis: 65, label: { formatter: "prioritas 65", color: "#9d3a26", fontSize: 10 } }, { xAxis: 85, label: { formatter: "sehat 85", color: "#475569", fontSize: 10 } }] } }],
   }} />;
 }
 
@@ -197,19 +238,21 @@ export function HealthGauge({ score }: { score: number }) {
 }
 
 export function WarehouseComparisonChart({ rows }: { rows: WarehouseComparisonRow[] }) {
+  const allValues = rows.flatMap((row) => [row.productivity, row.demandFillRate, row.forecastAccuracy]).filter((value): value is number => value !== null);
+  const maximum = Math.max(110, Math.ceil(Math.max(...allValues, 100) / 10) * 10);
   return <Chart height={295} option={{
     animationDuration: 350,
-    tooltip: { ...tooltip, trigger: "axis" },
-    legend: { top: 0, left: 0, itemWidth: 16, itemHeight: 4, textStyle: { color: "#54637a", fontSize: 11 } },
-    grid: { left: 52, right: 22, top: 46, bottom: 30 },
+    tooltip: { ...tooltip, trigger: "axis", axisPointer: { type: "shadow", shadowStyle: { color: "rgba(71,85,105,.08)" } }, valueFormatter: (value: number | null) => percent(value, 1) },
+    legend: { top: 0, left: 0, itemWidth: 14, itemHeight: 8, itemGap: 16, textStyle: { color: "#475569", fontSize: 11 } },
+    grid: { left: 56, right: 24, top: 50, bottom: 34 },
     xAxis: { type: "category", data: rows.map((row) => row.warehouse), ...axis },
-    yAxis: { type: "value", min: 0, max: 110, axisLabel: { color: "#54637a", fontSize: 11, formatter: "{value}%" }, splitLine: split },
+    yAxis: { type: "value", min: 0, max: maximum, axisLabel: { color: "#475569", fontSize: 11, formatter: "{value}%" }, splitLine: split },
     series: [
-      { name: "Productivity", type: "bar", data: rows.map((row) => row.productivity), barMaxWidth: 18, itemStyle: { color: palette[0], borderRadius: [4, 4, 0, 0] } },
+      { name: "Produktivitas", type: "bar", data: rows.map((row) => row.productivity), barMaxWidth: 17, itemStyle: { color: palette[0], borderColor: "#173fa5", borderWidth: 1, borderRadius: [4, 4, 0, 0] }, emphasis: { focus: "series" } },
       // Demand fill rate rather than warehouse FR: post-cancel FR sits at ~100% for
       // every warehouse, so it plots as a flat line that separates nobody.
-      { name: "Demand fill rate", type: "line", data: rows.map((row) => row.demandFillRate), showSymbol: true, symbolSize: 7, lineStyle: { color: palette[1], width: 2 }, itemStyle: { color: palette[1] } },
-      { name: "Forecast accuracy", type: "line", data: rows.map((row) => row.forecastAccuracy), showSymbol: true, symbolSize: 7, lineStyle: { color: palette[2], width: 2, type: "dashed" }, itemStyle: { color: palette[2] } },
+      { name: "Demand fill", type: "bar", data: rows.map((row) => row.demandFillRate), barMaxWidth: 17, itemStyle: { color: palette[1], borderColor: "#0b6e65", borderWidth: 1, borderRadius: [4, 4, 0, 0] }, emphasis: { focus: "series" } },
+      { name: "Akurasi forecast", type: "bar", data: rows.map((row) => row.forecastAccuracy), barMaxWidth: 17, itemStyle: { color: palette[2], borderColor: "#a66100", borderWidth: 1, borderRadius: [4, 4, 0, 0] }, emphasis: { focus: "series" } },
     ],
   }} />;
 }
