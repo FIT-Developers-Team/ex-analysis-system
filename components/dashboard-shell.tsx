@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -49,12 +49,12 @@ import { PRIORITY_WAREHOUSES } from "@/lib/types";
 type View = "overview" | "flow" | "relationships" | "simulation" | "initiatives" | "data";
 
 const nav = [
-  { id: "overview" as const, label: "Executive cockpit", short: "Cockpit", icon: LayoutDashboard },
+  { id: "overview" as const, label: "Cockpit eksekutif", short: "Cockpit", icon: LayoutDashboard },
   { id: "flow" as const, label: "Demand & flow", short: "Flow", icon: TrendingUp },
-  { id: "relationships" as const, label: "Relationship lab", short: "Relations", icon: GitBranch },
-  { id: "simulation" as const, label: "Scenario studio", short: "Scenario", icon: FlaskConical },
-  { id: "initiatives" as const, label: "Initiative portfolio", short: "Projects", icon: Lightbulb },
-  { id: "data" as const, label: "Metric registry", short: "Metrics", icon: Database },
+  { id: "relationships" as const, label: "Lab hubungan", short: "Relasi", icon: GitBranch },
+  { id: "simulation" as const, label: "Studio skenario", short: "Skenario", icon: FlaskConical },
+  { id: "initiatives" as const, label: "Portofolio inisiatif", short: "Project", icon: Lightbulb },
+  { id: "data" as const, label: "Registry metric", short: "Metric", icon: Database },
 ];
 
 const periodLabels: Record<Period, string> = { daily: "Daily", weekly: "Weekly", monthly: "Monthly" };
@@ -125,17 +125,19 @@ function ExecutiveCockpit({ data, openInitiatives }: { data: AnalysisPayload; op
   const breaching = data.kpis.filter((item) => data.health.criticalKpis.includes(item.key));
   return (
     <>
-      <section className="intelligence-hero intelligence-hero--executive">
+      <section className="intelligence-hero intelligence-hero--executive" aria-labelledby="cockpit-title">
         <div className="hero-copy">
           <span className={`status-label status-label--${data.health.status}`}><CircleDot size={13} />{data.health.headline}</span>
-          <h1>{data.context.warehouse} operating system is <em>{data.health.status === "controlled" ? "in control" : "under pressure"}</em></h1>
+          <div className="hero-score-compact"><span>System health</span><strong>{data.health.score}</strong></div>
+          <h1 id="cockpit-title">Sistem operasi {data.context.warehouse} <em>{data.health.status === "controlled" ? "terkendali" : "sedang tertekan"}</em></h1>
           <p>{data.health.narrative}</p>
           <div className="hero-meta"><span><CalendarDays size={14} />{fmtDate(data.context.rangeStart)} — {fmtDate(data.context.rangeEnd)}</span><span><Database size={14} />{data.health.confidence}% analytical confidence</span></div>
         </div>
         <div className="health-gauge"><HealthGauge score={data.health.score} /></div>
       </section>
 
-      <section className="kpi-strip">{priority.map((metric) => <KpiCard key={metric.key} metric={metric} />)}</section>
+      <div className="kpi-rail-header"><div><span>Guardrail utama</span><strong>Signal yang membentuk system health</strong></div><small>Geser untuk melihat seluruh KPI</small></div>
+      <section className="kpi-strip" aria-label="KPI guardrail utama">{priority.map((metric) => <KpiCard key={metric.key} metric={metric} />)}</section>
 
       {breaching.length > 0 && (
         <section className="panel guardrail-banner">
@@ -206,7 +208,7 @@ function FlowIntelligence({ data }: { data: AnalysisPayload }) {
   const [mode, setMode] = useState<"inbound" | "outbound">("outbound");
   return (
     <>
-      <PageIntro eyebrow="Demand-to-service control" title="Follow every unit through the warehouse" description="Bandingkan forecast, actual, cancel, RTS, hub received, labor, dan zonal capacity dalam satu aliran keputusan." meta={`${periodLabels[data.context.period]} · ${fmtDate(data.context.rangeStart)} — ${fmtDate(data.context.rangeEnd)}`} />
+      <PageIntro eyebrow="Demand-to-service control" title="Ikuti setiap unit hingga layanan selesai" description="Bandingkan forecast, actual, cancel, RTS, hub received, labor, dan zonal capacity dalam satu aliran keputusan." meta={`${periodLabels[data.context.period]} · ${fmtDate(data.context.rangeStart)} — ${fmtDate(data.context.rangeEnd)}`} />
       <section className="panel chart-panel">
         <SectionHeader eyebrow="28-day volume truth" title={mode === "outbound" ? "Forecast → request → RTS → hub" : "Forecast → actual inbound"} description="Actual goods menjadi basis productivity; forecast dipakai sebagai planning reference." action={<div className="segmented-control"><button className={mode === "inbound" ? "active" : ""} onClick={() => setMode("inbound")}>Inbound</button><button className={mode === "outbound" ? "active" : ""} onClick={() => setMode("outbound")}>Outbound</button></div>} />
         <VolumeFlowChart points={data.volumeFlow} mode={mode} />
@@ -240,9 +242,16 @@ function FlowIntelligence({ data }: { data: AnalysisPayload }) {
 }
 
 function RelationshipLab({ data }: { data: AnalysisPayload }) {
+  const [signalFilter, setSignalFilter] = useState<"all" | "actionable" | "validate">("all");
+  const visibleSignals = data.relationshipSignals.filter((signal) => {
+    const actionable = signal.survivesMultiplicity && !signal.sharedTerm && signal.alignment !== "inconclusive";
+    if (signalFilter === "actionable") return actionable;
+    if (signalFilter === "validate") return !actionable;
+    return true;
+  });
   return (
     <>
-      <PageIntro eyebrow="Cross-functional diagnostic" title="Separate association from operational truth" description="Hubungan 84 hari dipakai sebagai signal untuk investigasi, bukan klaim kausal. Sample size, lag, confidence, dan arah hipotesis selalu terlihat." meta={`84-day lookback · as of ${fmtDate(data.context.asOf)}`} />
+      <PageIntro eyebrow="Cross-functional diagnostic" title="Bedakan korelasi dari fakta operasional" description="Hubungan 84 hari dipakai sebagai signal untuk investigasi, bukan klaim kausal. Sample size, lag, confidence, dan arah hipotesis selalu terlihat." meta={`84-day lookback · as of ${fmtDate(data.context.asOf)}`} />
       <section className="split-grid split-grid--wide-left">
         <div className="panel chart-panel">
           <SectionHeader eyebrow="Association map" title="Which levers move with which outcomes" description="Koefisien Pearson r: biru mendukung arah hipotesis, emas berlawanan, abu-abu belum konklusif." />
@@ -255,8 +264,10 @@ function RelationshipLab({ data }: { data: AnalysisPayload }) {
         </div>
       </section>
 
-      <section className="relationship-card-grid">
-        {data.relationshipSignals.map((signal) => (
+      <section className="section-block relationship-evidence">
+        <SectionHeader eyebrow="Evidence queue" title="Pilih signal yang siap ditindaklanjuti" description="Actionable telah lolos koreksi statistik dan tidak berbagi formula; Validate masih membutuhkan slicing atau observasi floor." action={<div className="segmented-control signal-filter" aria-label="Filter relationship signals"><button className={signalFilter === "all" ? "active" : ""} onClick={() => setSignalFilter("all")}>Semua</button><button className={signalFilter === "actionable" ? "active" : ""} onClick={() => setSignalFilter("actionable")}>Actionable</button><button className={signalFilter === "validate" ? "active" : ""} onClick={() => setSignalFilter("validate")}>Validate</button></div>} />
+        <div className="relationship-card-grid">
+        {visibleSignals.map((signal) => (
           <article className={`relationship-card relationship-card--${signal.alignment}`} key={signal.id}>
             <header><span>{signal.driverDomain} → {signal.outcomeDomain}</span><b>{signal.coefficient === null ? "n/a" : `r ${signal.coefficient.toFixed(2)}`}</b></header>
             <h3>{signal.driverLabel} → {signal.outcomeLabel}</h3><p>{signal.narrative}</p>
@@ -265,6 +276,8 @@ function RelationshipLab({ data }: { data: AnalysisPayload }) {
             <footer><ArrowRight size={14} /><span>{signal.decision}</span></footer>
           </article>
         ))}
+        {!visibleSignals.length && <div className="panel empty-state"><Info size={20} /><p>Tidak ada signal pada filter ini untuk cut-off aktif.</p></div>}
+        </div>
       </section>
 
       <section className="section-block">
@@ -295,7 +308,7 @@ function ScenarioStudio({ data }: { data: AnalysisPayload }) {
   ];
   return (
     <>
-      <PageIntro eyebrow="Transparent what-if model" title="Stress-test the decision before the floor feels it" description="Simulator directional untuk melihat tarik-menarik volume, manpower, cancel, productivity, SLA, fulfillment, dan capacity." meta={`${data.context.warehouse} baseline · ${periodLabels[data.context.period]}`} />
+      <PageIntro eyebrow="Transparent what-if model" title="Uji keputusan sebelum berdampak ke floor" description="Simulator directional untuk melihat tarik-menarik volume, manpower, cancel, productivity, SLA, fulfillment, dan capacity." meta={`${data.context.warehouse} baseline · ${periodLabels[data.context.period]}`} />
       <section className="simulation-layout">
         <div className="panel controls-panel">
           <div className="simulation-baseline"><SlidersHorizontal size={18} /><div><strong>{data.context.warehouse} observed baseline</strong><span>Cut-off {fmtDate(data.context.asOf)}</span></div></div>
@@ -317,7 +330,7 @@ function ScenarioStudio({ data }: { data: AnalysisPayload }) {
 function InitiativePortfolio({ data }: { data: AnalysisPayload }) {
   return (
     <>
-      <PageIntro eyebrow="Execution portfolio" title="Turn recurring pain into measurable projects" description="Setiap project memiliki owner, effort, horizon, evidence, outcome, guardrail, dan langkah pertama—bukan sekadar generic recommendation." meta={`${data.initiatives.length} projects · ${data.context.warehouse}`} />
+      <PageIntro eyebrow="Execution portfolio" title="Ubah pain berulang menjadi project terukur" description="Setiap project memiliki owner, effort, horizon, evidence, outcome, guardrail, dan langkah pertama—bukan sekadar generic recommendation." meta={`${data.initiatives.length} projects · ${data.context.warehouse}`} />
       <section className="portfolio-overview">
         <div className="panel chart-panel"><SectionHeader eyebrow="Priority vs effort" title="Fund the right work first" description="Ukuran titik menunjukkan horizon; garis 65 adalah action threshold." /><InitiativePriorityChart initiatives={data.initiatives} /></div>
         <div className="portfolio-summary">
@@ -346,12 +359,13 @@ function MetricRegistry({ data }: { data: AnalysisPayload }) {
   const filtered = useMemo(() => data.pivotRows.filter((item) => `${item.division} ${item.role} ${item.metric} ${item.detail}`.toLowerCase().includes(query.toLowerCase())), [data.pivotRows, query]);
   return (
     <>
-      <PageIntro eyebrow="Metric registry & QA" title="Trace every number to its operating context" description="Pivot mempertahankan function, role, metric, detail, aggregation, comparison window, coverage, dan movement direction." meta={`${data.pivotRows.length} metrics · ${data.metricCatalog.length} catalog entries`} />
+      <PageIntro eyebrow="Metric registry & QA" title="Telusuri setiap angka sampai konteks operasinya" description="Pivot mempertahankan function, role, metric, detail, aggregation, comparison window, coverage, dan movement direction." meta={`${data.pivotRows.length} metrics · ${data.metricCatalog.length} catalog entries`} />
       <section className="data-quality-strip"><div><span>Source</span><strong>{data.context.sourceName}</strong></div><div><span>Read mode</span><strong>{data.context.sourceMode === "google" ? "Google batch API" : data.context.sourceMode === "snapshot" ? "Optimized snapshot" : "Local workbook"}</strong></div><div><span>Latest actual</span><strong>{fmtDate(data.context.asOf)}</strong></div><div><span>Confidence</span><strong>{data.health.confidence}%</strong></div></section>
       {data.health.dataWarnings.length > 0 && <section className="warning-panel"><AlertTriangle size={20} /><div><strong>Quality guardrails active</strong>{data.health.dataWarnings.map((warning) => <p key={warning}>{warning}</p>)}</div></section>}
       <section className="panel metric-panel">
         <div className="table-toolbar"><div><TableProperties size={17} /><span>Period pivot · current vs previous</span></div><div className="search-box"><Search size={17} /><input aria-label="Cari metric" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search metric, role, or function" /><span>{filtered.length}</span></div></div>
-        <div className="metric-table" role="table"><div className="metric-row metric-row--pivot metric-row--head" role="row"><span>Function / role</span><span>Metric</span><span>Aggregation</span><span>Current</span><span>Previous</span><span>Delta</span><span>Coverage</span></div>{filtered.slice(0, 250).map((item) => <div className="metric-row metric-row--pivot" role="row" key={item.id}><span><b>{item.division}</b><small>{item.role}</small></span><strong title={item.detail}>{item.metric}</strong><span className="aggregation-pill">{item.aggregation}</span><b>{fmtMetric(item.current, item.unit)}</b><span>{fmtMetric(item.previous, item.unit)}</span><span className={`movement movement--${item.movement}`}>{item.deltaPct === null ? "—" : fmtSigned(item.deltaPct)}</span><span>{Math.round(item.coverage * 100)}%</span></div>)}</div>
+        <div className="metric-table" role="table" aria-label="Metric pivot"><div className="metric-row metric-row--pivot metric-row--head" role="row"><span>Function / role</span><span>Metric</span><span>Aggregation</span><span>Current</span><span>Previous</span><span>Delta</span><span>Coverage</span></div>{filtered.slice(0, 250).map((item) => <div className="metric-row metric-row--pivot" role="row" key={item.id}><span><b>{item.division}</b><small>{item.role}</small></span><strong title={item.detail}>{item.metric}</strong><span className="aggregation-pill">{item.aggregation}</span><b>{fmtMetric(item.current, item.unit)}</b><span>{fmtMetric(item.previous, item.unit)}</span><span className={`movement movement--${item.movement}`}>{item.deltaPct === null ? "—" : fmtSigned(item.deltaPct)}</span><span>{Math.round(item.coverage * 100)}%</span></div>)}</div>
+        <div className="metric-mobile-list" aria-label="Daftar metric mobile">{filtered.slice(0, 80).map((item) => <article className="metric-mobile-card" key={item.id}><header><div><span>{item.division}</span><small>{item.role}</small></div><b>{fmtMetric(item.current, item.unit)}</b></header><h3>{item.metric}</h3><p>{item.detail}</p><footer><span>{item.aggregation}</span><span className={`movement movement--${item.movement}`}>{item.deltaPct === null ? "—" : fmtSigned(item.deltaPct)}</span><span>{Math.round(item.coverage * 100)}% coverage</span></footer></article>)}</div>
       </section>
     </>
   );
@@ -368,6 +382,16 @@ export function DashboardShell() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const workspaceRef = useRef<HTMLDivElement>(null);
+
+  const selectView = (nextView: View) => {
+    setView(nextView);
+    window.requestAnimationFrame(() => {
+      workspaceRef.current?.focus({ preventScroll: true });
+      workspaceRef.current?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+    });
+  };
 
   const refresh = useCallback(async (quiet = false, force = false) => {
     if (!quiet) setLoading(true);
@@ -394,9 +418,10 @@ export function DashboardShell() {
 
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#workspace-content">Lewati ke analisis utama</a>
       <aside className="sidebar">
         <div className="brand"><div className="brand-mark"><BarChart3 size={19} /></div><div><strong>NEXUS</strong><span>Excellence Analysis</span></div></div>
-        <nav aria-label="Primary"><span className="nav-caption">Decision workspaces</span>{nav.map((item) => { const Icon = item.icon; return <button data-view={item.id} className={view === item.id ? "active" : ""} key={item.id} onClick={() => setView(item.id)} title={item.label}><Icon size={17} /><span className="nav-label-long">{item.label}</span><span className="nav-label-short">{item.short}</span>{item.id === "initiatives" && data && <b>{data.initiatives.length}</b>}</button>; })}</nav>
+        <nav aria-label="Workspace utama"><span className="nav-caption">Decision workspaces</span>{nav.map((item) => { const Icon = item.icon; return <button type="button" data-view={item.id} className={view === item.id ? "active" : ""} aria-current={view === item.id ? "page" : undefined} key={item.id} onClick={() => selectView(item.id)} title={item.label}><Icon size={18} /><span className="nav-label-long">{item.label}</span><span className="nav-label-short">{item.short}</span>{item.id === "initiatives" && data && <b>{data.initiatives.length}</b>}</button>; })}</nav>
         <div className="sidebar-status"><div className="live-dot" /><div><strong>Source monitor</strong><span>{error ? "Connection needs attention" : "Auto-refresh · 60 sec"}</span></div></div>
         <div className="sidebar-footer"><span>FIT Operations Intelligence</span><small>v0.3 · connected decision system</small></div>
       </aside>
@@ -406,25 +431,29 @@ export function DashboardShell() {
 
         <div className="content-area">
           <div className="context-line"><span>{warehouse} · {periodLabels[period]} intelligence</span><span>{lastRefresh ? `Refreshed ${lastRefresh.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}` : "Connecting to source"}</span></div>
-          <section className="filter-console" aria-label="Analysis filters">
-            <div className="filter-console__title"><SlidersHorizontal size={17} /><div><strong>Analysis scope</strong><span>All pages use one operational cut-off</span></div></div>
-            <div className="filter-console__fields">
+          <section className={`filter-console${filtersOpen ? " is-open" : ""}`} aria-label="Filter analisis">
+            <div className="filter-console__title"><SlidersHorizontal size={18} /><div><strong>Ruang lingkup analisis</strong><span>Semua halaman memakai satu cut-off</span></div><div className="filter-summary" aria-label="Filter aktif"><span>{warehouse}</span><span>{periodLabels[period]}</span><span>{division === "All" ? "Semua fungsi" : division}</span></div><button type="button" className="filter-toggle" aria-expanded={filtersOpen} aria-controls="filter-console-body" onClick={() => setFiltersOpen((current) => !current)}>{filtersOpen ? "Tutup" : "Ubah"}<ChevronDown size={16} /></button></div>
+            <div className="filter-console__body" id="filter-console-body">
+              <div className="filter-console__fields">
               <FilterSelect label="Warehouse" value={warehouse} onChange={(value) => { setWarehouse(value as WarehouseCode); setDivision("All"); setRole("All"); setAsOf(""); }}>{PRIORITY_WAREHOUSES.map((item) => <option value={item} key={item}>{item}</option>)}</FilterSelect>
               <FilterSelect label="Function" value={division} onChange={(value) => { setDivision(value); setRole("All"); }}><option value="All">All functions</option>{(data?.filters.divisions ?? []).map((item) => <option value={item} key={item}>{item}</option>)}</FilterSelect>
               <FilterSelect label="Role" value={role} onChange={setRole} disabled={!data}><option value="All">All roles</option>{(data?.filters.rolesByDivision[division] ?? data?.filters.rolesByDivision.All ?? []).map((item) => <option value={item} key={item}>{item}</option>)}</FilterSelect>
               <FilterSelect label="Data cut-off" value={asOf} onChange={setAsOf} disabled={!data}><option value="">Latest actual</option>{(data?.filters.availableDates ?? []).map((item) => <option value={item} key={item}>{fmtDate(item)}</option>)}</FilterSelect>
+              </div>
+              <div className="period-control"><span>View</span><div className="period-switcher" aria-label="Period">{Object.entries(periodLabels).map(([key, label]) => <button type="button" className={period === key ? "active" : ""} aria-pressed={period === key} onClick={() => setPeriod(key as Period)} key={key}>{label}</button>)}</div></div>
             </div>
-            <div className="period-control"><span>View</span><div className="period-switcher" aria-label="Period">{Object.entries(periodLabels).map(([key, label]) => <button className={period === key ? "active" : ""} onClick={() => setPeriod(key as Period)} key={key}>{label}</button>)}</div></div>
           </section>
 
+          <div id="workspace-content" className="workspace-content" ref={workspaceRef} tabIndex={-1} aria-live="polite" aria-label={nav.find((item) => item.id === view)?.label}>
           {error ? <section className="source-error"><AlertTriangle size={24} /><div><h2>Live source belum terhubung</h2><p>{error}</p><button onClick={() => void refresh()}><RefreshCw size={15} />Retry connection</button></div></section> : loading && !data ? <Skeleton /> : data ? <>
-            {view === "overview" && <ExecutiveCockpit data={data} openInitiatives={() => setView("initiatives")} />}
+            {view === "overview" && <ExecutiveCockpit data={data} openInitiatives={() => selectView("initiatives")} />}
             {view === "flow" && <FlowIntelligence data={data} />}
             {view === "relationships" && <RelationshipLab data={data} />}
             {view === "simulation" && <ScenarioStudio data={data} />}
             {view === "initiatives" && <InitiativePortfolio data={data} />}
             {view === "data" && <MetricRegistry data={data} />}
           </> : <Skeleton />}
+          </div>
         </div>
       </main>
     </div>

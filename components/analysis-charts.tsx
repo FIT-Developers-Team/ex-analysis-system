@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import type { CSSProperties } from "react";
 import type {
   CapacityHistoryPoint,
   DriverSignal,
@@ -24,7 +25,11 @@ const tooltip = { backgroundColor: "#10213a", borderWidth: 0, textStyle: { color
 const number = (value: number | null | undefined) => value == null ? "—" : value.toLocaleString("id-ID", { maximumFractionDigits: 1 });
 
 function Chart({ option, height = 320 }: { option: Record<string, unknown>; height?: number }) {
-  return <ReactECharts option={option} style={{ height, width: "100%" }} notMerge lazyUpdate />;
+  const accessibleOption = {
+    aria: { enabled: true, decal: { show: true } },
+    ...option,
+  };
+  return <div className="chart-frame" style={{ "--chart-height": `${height}px` } as CSSProperties}><ReactECharts option={accessibleOption} style={{ height: "100%", width: "100%" }} notMerge lazyUpdate /></div>;
 }
 
 export function TrendChart({ series }: { series: TrendSeries[] }) {
