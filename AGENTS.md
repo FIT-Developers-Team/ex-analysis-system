@@ -90,15 +90,39 @@ change requires breaking one, say so explicitly rather than quietly relaxing it.
   slightly failing one and freezes the risk heatmap into a flat line.
 - **Evidence outranks defaults.** Initiatives linked to a pain point fill the list
   first; baseline fallbacks take only leftover slots.
+- **The floor layer borrows, it does not re-derive.** A station signal that is
+  already an engine KPI must quote `reading()`'s value; only columns the engine
+  does not grade get a `FLOOR_METRIC_RULES` entry. Station scores stay out of
+  `healthFrom()`.
+- **A floor threshold declares its basis.** `source_target`, `guardrail`, or
+  `working_threshold`. If none of the three is honest, the target is `null` and
+  the signal is context, not a grade.
+- **Percent scaling is declared per metric, never inferred.** Floor rules carry
+  an explicit `scale`; the engine's "multiply anything below 2" heuristic is safe
+  for derived percentages but turns 2.46 collective attainment into 2.5% and a
+  count of 2 late deliveries into 200.
 
 ## Data reality to keep in mind
 
 - Metric names are matched by exact normalized string. The source suffixes several
   with `%`, which silently killed four alias keys — add both spellings, and check
   a new alias actually matches something before relying on it.
-- Roughly half the source metric names are still unmapped, including
-  `MP Recommendation`, per-division attendance and churn, non-picker mandays, and
-  `OTIF %`. Mapping one is a product decision, not a refactor — ask first.
+- Many station-level columns are now mapped for the floor layer only: PO
+  adjustment, `OTIF %`, checker on-time/late, relabel and replenishment mandays,
+  putaway capacity/utilisation, LDP/LBH value and share, troubleshoot
+  contribution to SO FR, packer and loader productivity, SEUIC adoption,
+  pick-to-lost/bad, koli hilang di staging, hub-side FR, depart/arrival
+  punctuality, and per-division attendance. Reading them at a station is settled;
+  **promoting any of them into `KPI_KEYS` is still a product decision — ask
+  first**, because it changes what every past health score meant.
+- `MP Recommendation`, `Planogram Accuracy`, `GMV`, and `Schedule Accuracy`
+  remain unconfirmed and blocked from scoring.
+- `Found %` runs in the low teens against a 90% guardrail nobody in the source
+  ever set. The engine raises `found-rate-definition` as a coverage gap rather
+  than quietly relaxing the target; do not "fix" it by changing the number.
+- `Truck Delivered %` divides trucks delivered by *dedicated* trucks while the
+  numerator already includes on-call units, so it exceeds 100% when the reserve
+  is used. The loading station discloses this; it is not a bug to smooth over.
 - `schedule_accuracy` averages 40–73% against a 95% target and can exceed 100%.
   Its definition is unconfirmed. Do not build a recommendation on it.
 - BIT and STR genuinely do not track Pick-to-PF or replenishment. That is a scope

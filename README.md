@@ -12,13 +12,14 @@ NEXUS is a connected operations-intelligence dashboard for FIT quick-commerce wa
 - Resolves blank descriptions conservatively as `documented`, `inferred`, or `unresolved`; every inference exposes its basis, confidence, and the context still required, while unresolved metrics are blocked from decisions.
 - Produces a current operating picture such as demand suppression, surge undercoverage, capacity constraint, inventory drag, volume dilution, or process loss—together with observed facts, plausible mechanisms, alternative explanations, and a sequenced action path.
 - Maps five end-to-end operating threads and turns broken stages into a prioritized decision-coverage backlog instead of interpreting blank data as healthy performance.
+- Walks the physical flow as twelve floor stations — PO desk, GRN lane, QC gate, relabel bench, putaway aisle, zone capacity, cycle count, recovery queue, pickface refill, wave desk, packing bench, loading dock — each with its measured signals, its WMS transactions, the gemba checks a supervisor performs there, and failure modes that only fire when the data satisfies their trigger.
 - Selects adaptive initiative variants from the current warehouse state; title, trigger, why-now, intervention, and stop-loss change when the operating pattern changes.
 - Treats every initiative as a decision experiment with a portfolio role, explicit question, counterfactual, and leading indicators so the playbook can change when evidence changes.
 - Provides Daily, Weekly, Monthly, or custom date-range pivots with an equal-length previous comparison.
 - Benchmarks PGS, SRG, BIT, and STR on a common period and cut-off.
 - Includes a transparent scenario lab for volume, attendance, cancel, and process-efficiency changes, guarded by demand fill before cancellation.
 - Separates validated labor saving, false economy, under-coverage, and process loss using a non-monetary cost-to-serve proxy: mandays per 1,000 served units.
-- Exposes six decision workspaces: Executive Cockpit, Demand & Flow, Relationship Lab, Scenario Studio, Initiative Portfolio, and Metric Registry.
+- Exposes seven decision workspaces: Executive Cockpit, Floor Operations, Demand & Flow, Relationship Lab, Scenario Studio, Initiative Portfolio, and Metric Registry.
 - Adds an 8-week cross-functional risk heatmap, 28-day volume truth, fulfillment loss tree, labor-economics view, zonal capacity history, and priority-versus-effort portfolio.
 - Quantifies 84-day Pearson associations with sample size, lag, p-value, multiplicity correction, and hypothesis alignment; these signals are explicitly non-causal.
 - Excludes spreadsheet formula errors, treats future dates as plan rather than actual performance, and drops no-operations days instead of scoring them as zero.
@@ -97,6 +98,22 @@ The dashboard refreshes every 30 seconds only while the tab is visible and onlin
 - Metric readiness has four explicit states: `decision_ready`, `diagnostic_only`, `observational`, and `unconfirmed`. Unconfirmed definitions remain visible in the registry but are blocked from scoring, risk, relationships, and recommendations.
 - Definition evidence is separate from metric readiness. A recognizable naming pattern can support an `inferred` working definition without making the metric decision-ready; `unresolved` means the formula/grain/cut-off is too ambiguous to infer responsibly.
 - MP Recommendation, division attendance/churn, OTIF, non-picker mandays, and other not-yet-approved fields are not silently promoted into canonical KPI logic. Their source rows remain inspectable until a definition and decision contract are agreed.
+
+## The floor layer
+
+The KPI layer answers whether the warehouse is healthy. The floor layer answers which bench, lane, or desk produced that number, and what a supervisor would look at while standing in front of it. It lives in `lib/analysis/floor-operations.ts` and keeps three kinds of content strictly apart:
+
+- **Measured signals** — source columns read through the shared alias registry and graded with the same decay curve as the KPI engine. Where a station borrows a metric the engine already derives, it quotes the engine's own reading, so a station and the KPI card above it can never show two different numbers for the same thing.
+- **Protocol** — the WMS transactions the station executes and the physical checks a supervisor performs there. Standing operating knowledge; nothing in it is presented as a reading from the sheet.
+- **Failure modes** — each carries a numeric trigger and is either active on the current window's data or dormant, with the dormant ones and their triggers still listed. A mode never fires on narrative alone.
+
+Station thresholds state their own basis. `source_target` comes from a target column in the sheet, `guardrail` reuses a limit already agreed elsewhere in the product, and `working_threshold` was set by this engine because the source has none — those are meant to be argued with, not obeyed. Signals with no defensible threshold are shown as context and are not graded at all.
+
+Station scores never feed the warehouse health score. `healthFrom()` remains the single definition of health, over the unchanged `KPI_KEYS` basket.
+
+Newly mapped source columns (PO adjustment, vendor OTIF, checker on-time/late, relabel and replenishment mandays, putaway capacity and utilisation, LDP/LBH value and share, troubleshoot contribution to SO FR, packer and loader productivity, SEUIC device adoption, pick-to-lost/bad, koli hilang di staging, hub-side fulfillment, depart and arrival punctuality, per-division attendance) feed this layer only. Promoting any of them into the health basket would change what every historical score meant, which is a decision for the metric owner.
+
+Two mapping gaps were closed rather than left as blanks: STR labels checker output `Checker Productivity Collective` where the others use the longer spelling, and BIT, SRG, and STR carry putaway forecast as bare `Forecast MPP` / `Forecast Weekly`. In both cases the spellings are mutually exclusive per warehouse, so they are one metric under two names. `Putaway Productivity` and `Putaway Actual Productivity Collective` are **not** merged — PGS and SRG report both with different values, so they are two definitions and the station shows them separately.
 
 ## Measurement integrity rules
 

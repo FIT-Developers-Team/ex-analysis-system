@@ -6,13 +6,16 @@ import {
   AlertTriangle,
   ArrowRight,
   BarChart3,
+  Boxes,
   CalendarDays,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   CircleDot,
   Database,
+  Eye,
   FlaskConical,
+  Footprints,
   GitBranch,
   Info,
   LayoutDashboard,
@@ -20,6 +23,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   RefreshCw,
+  ScanLine,
   Search,
   SlidersHorizontal,
   Sparkles,
@@ -45,19 +49,22 @@ import {
 import { KpiCard } from "@/components/kpi-card";
 import { OperationsFlow } from "@/components/operations-flow";
 import { runSimulation } from "@/lib/analysis/simulation";
-import type { AnalysisPayload, DecisionInsight, Period, SimulationInputs, WarehouseCode } from "@/lib/types";
+import type { AnalysisPayload, DecisionInsight, FloorSignal, FloorStation, Period, SimulationInputs, WarehouseCode } from "@/lib/types";
 import { PRIORITY_WAREHOUSES } from "@/lib/types";
 
-type View = "overview" | "flow" | "relationships" | "simulation" | "initiatives" | "data";
+type View = "overview" | "floor" | "flow" | "relationships" | "simulation" | "initiatives" | "data";
 
 const nav = [
-  { id: "overview" as const, label: "Ringkasan operasi", short: "Ringkasan", icon: LayoutDashboard },
-  { id: "flow" as const, label: "Alur volume", short: "Alur", icon: TrendingUp },
-  { id: "relationships" as const, label: "Penyebab & bukti", short: "Bukti", icon: GitBranch },
-  { id: "simulation" as const, label: "Simulasi", short: "Simulasi", icon: FlaskConical },
-  { id: "initiatives" as const, label: "Rencana aksi", short: "Aksi", icon: Lightbulb },
-  { id: "data" as const, label: "Data & definisi", short: "Data", icon: Database },
+  { id: "overview" as const, group: "Analisis", label: "Ringkasan operasi", short: "Ringkasan", icon: LayoutDashboard },
+  { id: "floor" as const, group: "Analisis", label: "Lantai operasi", short: "Lantai", icon: Boxes },
+  { id: "flow" as const, group: "Analisis", label: "Alur volume", short: "Alur", icon: TrendingUp },
+  { id: "relationships" as const, group: "Analisis", label: "Penyebab & bukti", short: "Bukti", icon: GitBranch },
+  { id: "simulation" as const, group: "Tindakan", label: "Simulasi", short: "Simulasi", icon: FlaskConical },
+  { id: "initiatives" as const, group: "Tindakan", label: "Rencana aksi", short: "Aksi", icon: Lightbulb },
+  { id: "data" as const, group: "Tindakan", label: "Data & definisi", short: "Data", icon: Database },
 ];
+
+const navGroups = [...new Set(nav.map((item) => item.group))];
 
 const periodLabels: Record<Period, string> = { daily: "Harian", weekly: "Mingguan", monthly: "Bulanan", custom: "Kustom" };
 const presetPeriods: Period[] = ["daily", "weekly", "monthly"];
@@ -241,7 +248,32 @@ function OperatingPictureBrief({ data }: { data: AnalysisPayload }) {
   );
 }
 
-function ExecutiveCockpit({ data, openInitiatives }: { data: AnalysisPayload; openInitiatives: () => void }) {
+/** Bridge from the KPI layer to the station that produces the number. Without
+ *  it the cockpit names a problem and leaves the reader to guess which bench it
+ *  lives on. */
+function FloorConstraintStrip({ data, openFloor }: { data: AnalysisPayload; openFloor: () => void }) {
+  const briefing = data.floorBriefing;
+  const constraint = data.floorStations.find((station) => station.id === briefing.constraintStationId);
+  const firstStep = briefing.walkOrder[0];
+  return (
+    <section className={`floor-strip${constraint ? ` floor-strip--${constraint.state}` : ""}`} aria-labelledby="floor-strip-title">
+      <div className="floor-strip__copy">
+        <span className="eyebrow"><Boxes size={13} />Lantai operasi</span>
+        <h2 id="floor-strip-title">{briefing.headline}</h2>
+        {firstStep ? <p><b>Langkah pertama.</b> {firstStep.action}</p> : <p>{briefing.narrative}</p>}
+      </div>
+      <div className="floor-strip__counts">
+        <div><span>Menembus ambang</span><strong>{briefing.breachedCount}</strong></div>
+        <div><span>Tertekan</span><strong>{briefing.pressuredCount}</strong></div>
+        <div><span>Tidak terukur</span><strong>{briefing.unmeasuredCount}</strong></div>
+        <div><span>Stasiun terukur</span><strong>{briefing.measuredStations}/{briefing.totalStations}</strong></div>
+      </div>
+      <button type="button" className="ghost-button floor-strip__cta" onClick={openFloor}>Buka rute inspeksi <ChevronRight size={15} /></button>
+    </section>
+  );
+}
+
+function ExecutiveCockpit({ data, openInitiatives, openFloor }: { data: AnalysisPayload; openInitiatives: () => void; openFloor: () => void }) {
   // fulfillment_rate and demand_fill_rate sit side by side on purpose: the first is
   // measured after cancellation and the second before it, and the gap between them
   // is the share of demand that was dropped rather than served.
@@ -262,6 +294,7 @@ function ExecutiveCockpit({ data, openInitiatives }: { data: AnalysisPayload; op
       </section>
 
       <EconomicsBrief data={data} />
+      <FloorConstraintStrip data={data} openFloor={openFloor} />
       <OperatingPictureBrief data={data} />
 
       <div className="kpi-rail-header"><div><span>Guardrail utama</span><strong>KPI pembentuk skor</strong></div><small>Geser untuk melihat semua</small></div>
@@ -333,6 +366,234 @@ function ExecutiveCockpit({ data, openInitiatives }: { data: AnalysisPayload; op
           <div className="comparison-scoreboard">{[...data.warehouseComparison].sort((a, b) => b.healthScore - a.healthScore).map((row, index) => <div key={row.warehouse}><span>#{index + 1}</span><strong>{row.warehouse}{row.comparable ? "" : <em className="not-comparable" role="img" aria-label="Tidak setara: pilar yang dilaporkan lebih sedikit" title={`Hanya ${row.pillarsAvailable} dari ${row.pillarsTotal} pilar tersedia — peringkat tidak setara`}>⚠</em>}</strong><b>{row.healthScore}</b><small>{row.comparable ? `${row.dataConfidence}% cakupan` : `${row.pillarsAvailable}/${row.pillarsTotal} pilar`}</small></div>)}</div>
         </div>
       </section>
+    </>
+  );
+}
+
+const floorStateLabel: Record<FloorStation["state"], string> = {
+  controlled: "Terkendali",
+  pressured: "Tertekan",
+  breached: "Menembus ambang",
+  partial: "Sebagian terbaca",
+  unmeasured: "Tidak terukur",
+};
+
+const floorStageIcon: Record<FloorStation["stage"], typeof Boxes> = {
+  Inbound: ScanLine,
+  Inventory: Boxes,
+  Outbound: Footprints,
+  Dispatch: TrendingUp,
+};
+
+const floorStages: Array<"Semua" | FloorStation["stage"]> = ["Semua", "Inbound", "Inventory", "Outbound", "Dispatch"];
+
+function fmtSignal(signal: FloorSignal): string {
+  if (signal.value === null) return "—";
+  if (signal.unit === "percent") {
+    // Loss rates live below 1%; rounding them to one decimal turns a real 0.06%
+    // leak into a reassuring "0.1%". Small numbers get the precision they need.
+    const precision = Math.abs(signal.value) < 1 ? 2 : 1;
+    return `${signal.value.toLocaleString("id-ID", { minimumFractionDigits: precision, maximumFractionDigits: precision })}%`;
+  }
+  if (signal.unit === "currency") return new Intl.NumberFormat("id-ID", { notation: "compact", style: "currency", currency: "IDR", maximumFractionDigits: 1 }).format(signal.value);
+  if (signal.unit === "mandays") return `${signal.value.toLocaleString("id-ID", { maximumFractionDigits: 1 })} MD`;
+  return signal.value.toLocaleString("id-ID", { maximumFractionDigits: signal.unit === "ratio" ? 0 : 0 });
+}
+
+function FloorSignalRow({ signal }: { signal: FloorSignal }) {
+  const coverage = Math.round(signal.coverage * 100);
+  return (
+    <div className={`floor-signal floor-signal--${signal.severity}`}>
+      <div className="floor-signal__head">
+        <span title={signal.floorNote}>{signal.label}</span>
+        <b>{fmtSignal(signal)}</b>
+      </div>
+      <div className="floor-signal__meta">
+        {/* Localised like the value above it: "0,06% vs ambang 0.2%" mixes two
+            decimal conventions in one line. */}
+        {signal.target === null ? <em>konteks</em> : <em>ambang {signal.target.toLocaleString("id-ID", { maximumFractionDigits: 2 })}{signal.unit === "percent" ? "%" : ""}</em>}
+        <span className={`status-pill status-pill--${signal.severity === "good" ? "good" : signal.severity}`}>
+          {signal.severity === "good" ? "Sesuai" : signal.severity === "watch" ? "Waspada" : signal.severity === "critical" ? "Breach" : "Konteks"}
+        </span>
+        <i className="floor-signal__coverage" aria-hidden="true"><i style={{ width: `${coverage}%` }} /></i>
+        <small>{coverage}%</small>
+      </div>
+      <p>{signal.floorNote}</p>
+    </div>
+  );
+}
+
+function FloorStationCard({ station, highlighted, open, onToggle }: { station: FloorStation; highlighted: boolean; open: boolean; onToggle: (open: boolean) => void }) {
+  const Icon = floorStageIcon[station.stage];
+  const active = station.failureModes.filter((mode) => mode.active);
+  const dormant = station.failureModes.filter((mode) => !mode.active);
+  return (
+    <article id={`station-${station.id}`} className={`floor-station floor-station--${station.state}${highlighted ? " is-constraint" : ""}`}>
+      {/* The card collapses to its verdict line. Twelve fully expanded stations
+          is a page nobody scrolls to the end of, so the ones the briefing put on
+          today's walk open by default and the rest stay one click away. */}
+      <details open={open} onToggle={(event) => onToggle(event.currentTarget.open)}>
+      <summary className="floor-station__head">
+        <span className="floor-station__seq">{String(station.sequence).padStart(2, "0")}</span>
+        <div className="floor-station__title">
+          <span className="floor-station__stage"><Icon size={13} />{station.stage}</span>
+          <h3>{station.title}</h3>
+          <div className="floor-station__meta">
+            <span><Users size={13} />{station.owner}</span>
+            <span><CalendarDays size={13} />{station.shiftMoment}</span>
+          </div>
+        </div>
+        <div className="floor-station__verdict">
+          <strong>{station.score === null ? "—" : station.score}</strong>
+          <span className={`status-pill status-pill--${station.state === "controlled" ? "good" : station.state === "breached" ? "critical" : station.state === "pressured" ? "watch" : "neutral"}`}>{floorStateLabel[station.state]}</span>
+          <ChevronDown size={16} className="floor-station__chevron" />
+        </div>
+        <p className="floor-station__reading"><Activity size={14} />{station.reading}</p>
+      </summary>
+
+      <p className="floor-station__purpose">{station.purpose}</p>
+
+      {station.signals.length > 0 && <div className="floor-signal-grid">{station.signals.map((signal) => <FloorSignalRow key={signal.key} signal={signal} />)}</div>}
+
+      {active.length > 0 && (
+        <div className="floor-mode-list">
+          {active.map((mode) => (
+            <div className="floor-mode floor-mode--active" key={mode.id}>
+              <header><AlertTriangle size={15} /><strong>{mode.title}</strong><small>{mode.owner}</small></header>
+              <div className="floor-mode__body">
+                <p className="floor-mode__symptom"><Eye size={13} />{mode.floorSymptom}</p>
+                <div className="floor-mode__evidence">{mode.evidence.map((item) => <span key={item}>{item}</span>)}</div>
+                <div className="floor-mode__actions">
+                  <div><span>Tahan sekarang</span><p>{mode.containment}</p></div>
+                  <div><span>Perbaiki penyebab</span><p>{mode.correction}</p></div>
+                </div>
+                <details className="floor-mode__causes"><summary>Kandidat akar masalah <ChevronDown size={14} /></summary><ul>{mode.rootCauses.map((cause) => <li key={cause}>{cause}</li>)}</ul></details>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <details className="floor-protocol">
+        <summary><span>Protokol WMS &amp; pengecekan lapangan</span><ChevronDown size={15} /></summary>
+        <div className="floor-protocol__body">
+          <section>
+            <strong><ScanLine size={14} />Langkah di WMS</strong>
+            <ol>{station.wmsSteps.map((step) => <li key={step}>{step}</li>)}</ol>
+          </section>
+          <section>
+            <strong><Eye size={14} />Yang dicek langsung di lantai</strong>
+            <ul>{station.gembaChecks.map((check) => <li key={check}>{check}</li>)}</ul>
+          </section>
+        </div>
+        {dormant.length > 0 && (
+          <div className="floor-dormant">
+            <strong>Mode kegagalan yang tidak aktif pada rentang ini</strong>
+            {dormant.map((mode) => <p key={mode.id}><CheckCircle2 size={13} /><b>{mode.title}</b> — pemicu: {mode.trigger}</p>)}
+          </div>
+        )}
+      </details>
+
+      <footer className="floor-station__foot">
+        <p><ArrowRight size={14} /><span><b>Risiko serah terima.</b> {station.handoffRisk}</span></p>
+        {station.unmeasured.length > 0 && (
+          <div className="floor-unmeasured">
+            <span>Belum terukur di stasiun ini</span>
+            <div>{station.unmeasured.map((item) => <em key={item}>{item}</em>)}</div>
+          </div>
+        )}
+      </footer>
+      </details>
+    </article>
+  );
+}
+
+function FloorOperations({ data }: { data: AnalysisPayload }) {
+  const [stage, setStage] = useState<"Semua" | FloorStation["stage"]>("Semua");
+  // Explicit opens and closes override the default; the default is "the station
+  // is over its line". Keyed by warehouse in the parent, so switching warehouse
+  // recomputes the defaults instead of carrying another warehouse's choices.
+  const [openOverrides, setOpenOverrides] = useState<Record<string, boolean>>({});
+  const briefing = data.floorBriefing;
+  const visible = data.floorStations.filter((station) => stage === "Semua" || station.stage === stage);
+  const walkIds = new Set(briefing.walkOrder.map((step) => step.stationId));
+  const isOpen = (station: FloorStation) => openOverrides[station.id] ?? walkIds.has(station.id);
+  const openCount = data.floorStations.filter(isOpen).length;
+  const setAll = (open: boolean) => setOpenOverrides(Object.fromEntries(data.floorStations.map((station) => [station.id, open])));
+  const jumpTo = (id: string) => {
+    setOpenOverrides((current) => ({ ...current, [id]: true }));
+    window.requestAnimationFrame(() => {
+      const target = document.getElementById(`station-${id}`);
+      target?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+    });
+  };
+  return (
+    <>
+      <PageIntro
+        eyebrow="Lantai operasi"
+        title="Dua belas titik antara truk vendor dan hub"
+        description="Setiap stasiun membawa angka yang terukur, protokol WMS-nya, dan hal yang harus dilihat langsung di lantai. Stasiun tanpa data ditandai tidak terukur—bukan aman."
+        meta={`${briefing.measuredStations}/${briefing.totalStations} stasiun terukur · ${fmtDate(data.context.rangeStart)} — ${fmtDate(data.context.rangeEnd)}`}
+      />
+
+      <section className="floor-briefing" aria-labelledby="floor-briefing-title">
+        <div className="floor-briefing__copy">
+          <span className="eyebrow">Rute inspeksi shift ini</span>
+          <h2 id="floor-briefing-title">{briefing.headline}</h2>
+          <p>{briefing.narrative}</p>
+          <div className="floor-briefing__counts">
+            <span className="floor-count floor-count--breached"><b>{briefing.breachedCount}</b> menembus ambang</span>
+            <span className="floor-count floor-count--pressured"><b>{briefing.pressuredCount}</b> tertekan</span>
+            <span className="floor-count floor-count--unmeasured"><b>{briefing.unmeasuredCount}</b> tidak terukur</span>
+          </div>
+        </div>
+        <ol className="floor-walk">
+          {briefing.walkOrder.map((step, index) => (
+            <li key={step.stationId}>
+              <button type="button" onClick={() => jumpTo(step.stationId)}>
+                <span>{String(index + 1).padStart(2, "0")}</span>
+                <div><strong>{step.title}</strong><small>{step.reason}</small><p>{step.action}</p></div>
+                <ChevronRight size={16} />
+              </button>
+            </li>
+          ))}
+          {!briefing.walkOrder.length && <li className="floor-walk__empty"><CheckCircle2 size={17} /><p>Tidak ada stasiun yang menembus ambang. Gunakan waktu shift untuk memverifikasi stasiun yang belum terukur.</p></li>}
+        </ol>
+      </section>
+
+      <nav className="floor-chain" aria-label="Rantai proses">
+        {data.floorStations.map((station) => (
+          <button type="button" key={station.id} className={`floor-chip floor-chip--${station.state}${briefing.constraintStationId === station.id ? " is-constraint" : ""}`} onClick={() => jumpTo(station.id)}>
+            <b>{String(station.sequence).padStart(2, "0")}</b>
+            <span>{station.title}</span>
+            <small>{floorStateLabel[station.state]}</small>
+          </button>
+        ))}
+      </nav>
+
+      <div className="floor-toolbar">
+        <div className="segmented-control" aria-label="Filter tahap">
+          {floorStages.map((item) => <button type="button" key={item} className={stage === item ? "active" : ""} onClick={() => setStage(item)}>{item}</button>)}
+        </div>
+        <div className="floor-toolbar__right">
+          <small>{visible.length} stasiun ditampilkan · {openCount} terbuka</small>
+          <button type="button" className="ghost-button" onClick={() => setAll(openCount < data.floorStations.length)}>
+            {openCount < data.floorStations.length ? "Buka semua" : "Ringkas semua"}
+          </button>
+        </div>
+      </div>
+
+      <div className="floor-station-list">
+        {visible.map((station) => (
+          <FloorStationCard
+            key={station.id}
+            station={station}
+            highlighted={briefing.constraintStationId === station.id}
+            open={isOpen(station)}
+            onToggle={(open) => setOpenOverrides((current) => ({ ...current, [station.id]: open }))}
+          />
+        ))}
+      </div>
     </>
   );
 }
@@ -735,7 +996,25 @@ export function DashboardShell() {
       <a className="skip-link" href="#workspace-content">Lewati ke analisis utama</a>
       <aside className="sidebar">
         <div className="brand"><div className="brand-mark"><BarChart3 size={19} /></div><div className="brand-copy"><strong>NEXUS</strong><span>Operations Intelligence</span></div></div>
-        <nav aria-label="Menu utama"><span className="nav-caption">Analisis</span>{nav.map((item) => { const Icon = item.icon; return <button type="button" data-view={item.id} className={view === item.id ? "active" : ""} aria-current={view === item.id ? "page" : undefined} key={item.id} onClick={() => selectView(item.id)} title={item.label}><Icon size={18} /><span className="nav-label-long">{item.label}</span><span className="nav-label-short">{item.short}</span>{item.id === "initiatives" && data && <b>{data.initiatives.length}</b>}</button>; })}</nav>
+        <nav aria-label="Menu utama">
+          {navGroups.map((group) => (
+            <div className="nav-group" key={group}>
+              <span className="nav-caption">{group}</span>
+              {nav.filter((item) => item.group === group).map((item) => {
+                const Icon = item.icon;
+                const badge = item.id === "initiatives" ? data?.initiatives.length : item.id === "floor" ? data?.floorBriefing.breachedCount : undefined;
+                return (
+                  <button type="button" data-view={item.id} className={view === item.id ? "active" : ""} aria-current={view === item.id ? "page" : undefined} key={item.id} onClick={() => selectView(item.id)} title={item.label}>
+                    <Icon size={18} />
+                    <span className="nav-label-long">{item.label}</span>
+                    <span className="nav-label-short">{item.short}</span>
+                    {Boolean(badge) && <b className={item.id === "floor" ? "nav-badge--alert" : undefined}>{badge}</b>}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </nav>
         <div className={`sidebar-status sidebar-status--${sourceState.tone}`}><div className="live-dot" /><div><strong>Sinkron data</strong><span>{error ? "Perlu diperiksa" : "Otomatis · 30 detik"}</span></div></div>
         <div className="sidebar-footer"><span>FIT Operations Intelligence</span><small>Realtime decision support</small></div>
       </aside>
@@ -768,7 +1047,8 @@ export function DashboardShell() {
 
           <div id="workspace-content" className="workspace-content" ref={workspaceRef} tabIndex={-1} aria-live="polite" aria-label={nav.find((item) => item.id === view)?.label}>
           {error ? <section className="source-error"><AlertTriangle size={24} /><div><h2>Data belum dapat dibaca</h2><p>{error}</p><button onClick={() => void refresh()}><RefreshCw size={15} />Coba lagi</button></div></section> : loading && !data ? <Skeleton /> : data ? <>
-            {view === "overview" && <ExecutiveCockpit data={data} openInitiatives={() => selectView("initiatives")} />}
+            {view === "overview" && <ExecutiveCockpit data={data} openInitiatives={() => selectView("initiatives")} openFloor={() => selectView("floor")} />}
+            {view === "floor" && <FloorOperations key={data.context.warehouse} data={data} />}
             {view === "flow" && <FlowIntelligence data={data} />}
             {view === "relationships" && <RelationshipLab data={data} />}
             {view === "simulation" && <ScenarioStudio data={data} />}

@@ -1,5 +1,7 @@
 import { metricAliasKeys, normalizeLabel } from "@/lib/data/metric-aliases";
 import { buildMetricSemantic, OPERATION_GLOSSARY, OPERATING_RULES } from "@/lib/analysis/operations-ontology";
+import { buildFloorBriefing, buildFloorStations, FLOOR_ENGINE_KEYS } from "@/lib/analysis/floor-operations";
+import { clamp, decayScore } from "@/lib/analysis/scoring";
 import { PRIORITY_WAREHOUSES } from "@/lib/types";
 import type {
   AnalysisPayload,
@@ -38,7 +40,6 @@ type Window = { start: string; end: string; days: number };
 type Aggregate = { value: number | null; coverage: number; count: number };
 
 const DAY = 86_400_000;
-const clamp = (value: number, min = 0, max = 100) => Math.min(max, Math.max(min, value));
 const iso = (date: Date) => date.toISOString().slice(0, 10);
 const aggregateCache = new WeakMap<MetricPoint[], Map<string, Aggregate>>();
 const metricIndexCache = new WeakMap<MetricPoint[], Map<string, MetricPoint[]>>();
@@ -326,23 +327,6 @@ function dailyTrend(points: MetricPoint[], key: string, window: Window): TrendSe
     return { date, value };
   });
   return { key, label: rule.label, unit: rule.unit, values };
-}
-
-/**
- * Converts a shortfall into a 0–100 score without ever reaching the floor.
- *
- * The previous linear form `100 - gap * slope` hit exactly 0 once the gap passed
- * 100/slope, so a chronically underperforming metric froze at zero and stopped
- * carrying information — schedule accuracy scored 0 on 100% of STR's observations,
- * which is why the People risk row read as a flat line for eight straight weeks.
- *
- * This halves the score every `50 / slope` points of shortfall, so it matches the
- * old calibration where it mattered (still 50 at the same gap) and keeps ranking
- * warehouses that are all far below target.
- */
-function decayScore(gap: number, slope: number): number {
-  if (gap <= 0) return 100;
-  return clamp(100 * Math.pow(0.5, (gap * slope) / 50));
 }
 
 function scoreMetric(key: string, value: number | null): number {
@@ -1933,6 +1917,19 @@ function decisionCoverageGaps(
     requiredEvidence: ["Task arrival per jam", "Task executed", "Aging bucket", "Actual mandays troubleshooter", "Found value"],
     decisionUnlocked: "Menentukan staffing curve dan prioritas recovery berdasarkan marginal FR per manday.", owner: "Inventory + Personalia",
   });
+  // Found % runs in the low teens against a 90% guardrail that nobody in the
+  // source ever set, which is enough on its own to mark the DCC station as
+  // breached. Either the guardrail is wrong or recovery is failing badly; the
+  // engine is not entitled to decide which, so it asks.
+  const foundRate = value("found_rate");
+  if (foundRate !== null && foundRate < 50) add({
+    id: "found-rate-definition", priority: "high", kind: "definition", domain: "Inventory",
+    title: "Guardrail Found % belum pernah dikonfirmasi pemiliknya",
+    whyItMatters: "Nilai yang terbaca jauh di bawah guardrail yang dipakai mesin, sehingga stasiun DCC selalu tampak gagal. Bila denominatornya adalah seluruh item hilang, target 90% memang tidak realistis; bila bukan, recovery memang bermasalah. Keduanya menuntut tindakan yang berbeda.",
+    observedContext: [`Found % ${pct(foundRate)} terhadap guardrail mesin 90%.`, "Sumber tidak menyediakan kolom target untuk metric ini."],
+    requiredEvidence: ["Numerator dan denominator Found %", "Cut-off pencarian", "Definisi item yang dianggap ditemukan", "Target yang disepakati Inventory Control"],
+    decisionUnlocked: "Menentukan apakah Found % layak menjadi outcome recovery atau hanya konteks pencarian.", owner: "Inventory Control + Data Owner",
+  });
   const relabelForecast = points.some((point) => normalizeLabel(point.metric).includes("forecast") && (normalizeLabel(point.metric).includes("relabel") || normalizeLabel(point.metric).includes("relable")));
   if (!relabelForecast && (activeLabel("Relable Qty") || activeLabel("Relabel Qty"))) add({
     id: "relabel-scope", priority: "medium", kind: "denominator", domain: "Inbound",
@@ -1979,6 +1976,31 @@ function decisionCoverageGaps(
   });
   const priorityRank: Record<DecisionCoverageGap["priority"], number> = { critical: 4, high: 3, medium: 2, low: 1 };
   return gaps.sort((a, b) => priorityRank[b.priority] - priorityRank[a.priority] || a.domain.localeCompare(b.domain)).slice(0, 8);
+}
+
+/**
+ * Bridges the KPI engine to the floor-station layer.
+ *
+ * Two rules hold the bridge together. Station signals that are already engine
+ * KPIs are handed over as the engine's own reading, so the station and the KPI
+ * card above it can never quote two different numbers for one metric. Signals
+ * the engine does not grade are read raw — deliberately not through
+ * normalizePercent, whose "multiply anything below 2" heuristic is safe for
+ * derived percentages but would turn a count of 2 late deliveries into 200.
+ */
+function floorStationLayer(points: MetricPoint[], current: Window, previous: Window) {
+  const engineReadings = new Map(FLOOR_ENGINE_KEYS.map((key) => [key as string, reading(points, key, current, previous)]));
+  const stations = buildFloorStations(
+    {
+      raw: (key, aggregation) => {
+        const value = metricValue(points, key, current, aggregation);
+        return { value: value.value, coverage: value.coverage };
+      },
+      kpi: (key) => engineReadings.get(key),
+    },
+    scoreMetric,
+  );
+  return { stations, briefing: buildFloorBriefing(stations) };
 }
 
 export function buildAnalysis(
@@ -2070,6 +2092,7 @@ export function buildAnalysis(
   const intelligence = intelligenceSummary(semanticCatalog);
   const picture = operatingPicture(kpis, zones, economics, chains);
   const threads = operationalThreads(warehousePoints, current, kpis);
+  const floor = floorStationLayer(warehousePoints, current, previous);
   const contextGaps = decisionCoverageGaps(warehousePoints, current, kpis, semanticCatalog, threads, zones);
   const chartWindow = visualWindow(current, effectivePeriod);
   const activeTrendKeys = division === "All" ? ["forecast_accuracy", "productivity_attainment", "demand_fill_rate", "capacity_utilization", "cancel_rate", "dcc_accuracy"]
@@ -2114,6 +2137,8 @@ export function buildAnalysis(
     decisionInsights: decisionInsights(kpis, zones, pains, relationships),
     operatingPicture: picture,
     operationalThreads: threads,
+    floorStations: floor.stations,
+    floorBriefing: floor.briefing,
     contextGaps,
     causalChains: chains,
     painPoints: pains,

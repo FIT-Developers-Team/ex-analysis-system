@@ -184,6 +184,8 @@ export interface AnalysisPayload {
   decisionInsights: DecisionInsight[];
   operatingPicture: OperatingPicture;
   operationalThreads: OperationalThread[];
+  floorStations: FloorStation[];
+  floorBriefing: FloorBriefing;
   contextGaps: DecisionCoverageGap[];
   causalChains: CausalChain[];
   painPoints: PainPoint[];
@@ -501,6 +503,86 @@ export interface WarehouseComparisonRow {
   /** False when this warehouse is missing pillars the others report, so its
    *  rank is not like-for-like. */
   comparable: boolean;
+}
+
+/* ---------------------------------------------------------------------------
+   Floor layer — the physical stations between a vendor truck and a hub receipt.
+   The KPI layer above answers "is the warehouse healthy". This layer answers
+   "which bench, lane, or desk is producing that number, and what would a
+   supervisor look at when standing in front of it".
+--------------------------------------------------------------------------- */
+
+export type FloorStationState = "controlled" | "pressured" | "breached" | "partial" | "unmeasured";
+
+export interface FloorSignal {
+  key: string;
+  label: string;
+  value: number | null;
+  target: number | null;
+  unit: MetricReading["unit"];
+  severity: Severity;
+  coverage: number;
+  /** How to read this number while standing at the station, not its formula. */
+  floorNote: string;
+}
+
+export interface FloorFailureMode {
+  id: string;
+  title: string;
+  /** What it looks like on the floor before any report is opened. */
+  floorSymptom: string;
+  /** The shape it takes in the source sheet. */
+  dataSignature: string;
+  rootCauses: string[];
+  /** Action that fits inside the running shift. */
+  containment: string;
+  /** Action that removes the cause, for the next shift or the next week. */
+  correction: string;
+  owner: string;
+  /** True when the current window's numbers satisfy this mode's trigger. */
+  active: boolean;
+  /** The numeric condition, stated so it can be argued with. */
+  trigger: string;
+  /** Resolved figures behind `active`; empty when the mode is dormant. */
+  evidence: string[];
+}
+
+export interface FloorStation {
+  id: string;
+  sequence: number;
+  stage: "Inbound" | "Inventory" | "Outbound" | "Dispatch";
+  title: string;
+  /** Where this sits in the working day. Protocol, not a measured timestamp. */
+  shiftMoment: string;
+  owner: string;
+  purpose: string;
+  /** The WMS transactions the station actually executes, in order. */
+  wmsSteps: string[];
+  /** What to inspect physically. Written to be usable while walking. */
+  gembaChecks: string[];
+  /** What breaks at the handover into the next station. */
+  handoffRisk: string;
+  score: number | null;
+  state: FloorStationState;
+  reading: string;
+  signals: FloorSignal[];
+  failureModes: FloorFailureMode[];
+  /** What this station cannot prove from the source yet. */
+  unmeasured: string[];
+}
+
+export interface FloorBriefing {
+  /** Station carrying the tightest constraint in the active window. */
+  constraintStationId: string | null;
+  headline: string;
+  narrative: string;
+  breachedCount: number;
+  pressuredCount: number;
+  unmeasuredCount: number;
+  measuredStations: number;
+  totalStations: number;
+  /** Ordered walk for this shift: which bench to stand at, and why. */
+  walkOrder: Array<{ stationId: string; title: string; reason: string; action: string }>;
 }
 
 export interface SimulationInputs {

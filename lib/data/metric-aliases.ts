@@ -8,10 +8,16 @@ export const METRIC_ALIASES: Record<string, string[]> = {
   sla_checker_inbound: ["sla checker inbound achievement"],
   budget_checker_mandays: ["budget mandays checker inbound"],
   actual_checker_mandays: ["actual mandays checker inbound"],
-  checker_productivity: ["checker inbound actual productivity collective"],
+  // STR labels the same column "Checker Productivity Collective" and never
+  // reports the longer spelling; the two never appear together in one warehouse,
+  // so this is one metric under two names rather than two metrics being merged.
+  checker_productivity: ["checker inbound actual productivity collective", "checker productivity collective"],
   checker_productivity_target: ["checker inbound productivity target"],
-  forecast_mpp_putaway: ["forecast mpp putaway"],
-  forecast_weekly_putaway: ["forecast weekly putaway"],
+  // Only PGS suffixes these with "Putaway"; BIT, SRG, and STR carry the bare
+  // labels inside the Inv-Putaway block. Both spellings are unique to putaway —
+  // inbound and outbound prefix their own forecast columns.
+  forecast_mpp_putaway: ["forecast mpp putaway", "forecast mpp"],
+  forecast_weekly_putaway: ["forecast weekly putaway", "forecast weekly"],
   putaway_actual: ["putaway actual"],
   putaway_done: ["putaway done"],
   putaway_utilization: ["putaway utilization", "putaway utilization %"],
@@ -85,6 +91,91 @@ export const METRIC_ALIASES: Record<string, string[]> = {
   // derivations against the spreadsheet. Never rendered as a KPI.
   source_inbound_forecast_accuracy: ["inbound forecast weekly accuracy %"],
   source_outbound_forecast_accuracy: ["outbound forecast weekly accuracy %"],
+
+  // ---------------------------------------------------------------------------
+  // Station layer. These columns describe what happens at a physical workstation
+  // — the PO desk, the GRN lane, the QC gate, the putaway aisle, the pickface,
+  // the packing bench, the loading dock. They feed lib/analysis/floor-operations
+  // only. None of them is promoted into KPI_KEYS: adding a metric to the health
+  // basket changes what every historical score meant, which is a decision for
+  // the metric owner, not a side effect of mapping a column.
+  // ---------------------------------------------------------------------------
+
+  // Inbound: PO desk and the GRN lane.
+  po_adjustment: ["po adjustment"],
+  checker_otif: ["otif %"],
+  checker_on_time: ["on time"],
+  checker_late: ["late"],
+  checker_productivity_individual: ["productivity avg invidual checker inbound"],
+  checker_attainment_source: ["productivity collective achievement %"],
+  relabel_actual_mandays: ["actual mandays relable"],
+  relabel_budget_mandays: ["budget mandays relable"],
+
+  // Inventory: putaway aisle, cycle count, recovery queue, pickface refill.
+  putaway_capacity: ["max putaway capacity"],
+  putaway_suggestion_accuracy: ["putaway suggestion accuracy %"],
+  putaway_sla: ["sla putaway achievement"],
+  // BIT reports putaway output under a different column name than PGS/SRG/STR,
+  // and PGS/SRG report BOTH with different values. They are kept apart rather
+  // than merged: averaging two disagreeing definitions of the same thing would
+  // produce a number that matches neither.
+  putaway_productivity_collective: ["putaway actual productivity collective"],
+  replenishment_actual_mandays: ["actual mandays replenishment"],
+  replenishment_budget_mandays: ["budget mandays replenishment"],
+  replenishment_productivity: ["replenishment actual productivity collective", "replenishment productivity"],
+  replenishment_productivity_target: ["replenishment productivity target"],
+  troubleshoot_so_contribution: ["contribution to so fr %"],
+  ldp_stock_share: ["ldp vs. inventory stock %", "ldp vs inventory stock %"],
+  lbh_value: ["lbh (by value)"],
+  lost_to_found: ["lost fo found"],
+  badstock_qty: ["badstock qty (actual)"],
+  badstock_sla: ["sla bad stock"],
+  wastage_expired: ["wastage due to expired"],
+  wastage_inbound_to_bad: ["wastage due to inbound to bad"],
+  wastage_others: ["wastage due to others"],
+
+  // Outbound: wave desk, picking, packing bench, staging, loading dock.
+  seuic_adoption: ["adoption rate seuic %"],
+  so_ratio: ["so ratio"],
+  outbound_productivity_overall: ["productivity overall %"],
+  picker_attainment_source: ["picker productivity collective %"],
+  picker_productivity_user: ["picker productivity by user login"],
+  picker_regular_productivity: ["picker regular productivity"],
+  packer_productivity: ["packer actual productivity collective"],
+  packer_productivity_target: ["packer productivity target"],
+  packer_attainment_source: ["packer productivity collective %"],
+  packer_productivity_user: ["packer productivity by user login"],
+  loader_productivity: ["loader actual productivity collective"],
+  loader_productivity_target: ["loader productivity target"],
+  loader_attainment_source: ["loader productivity collective %"],
+  // "bu User Login" is the source's spelling, not a typo on this side.
+  loader_productivity_user: ["loader productivity bu user login"],
+  inbound_to_bad_rate: ["inbound to bad %"],
+  inbound_to_bad_qty: ["inbound to bad (by qty)"],
+  inbound_to_lost_rate: ["inbound to lost %"],
+  inbound_to_lost_qty: ["inbound to lost (by qty)"],
+  pick_to_lost_qty: ["pick to lost (by qty)"],
+  pick_to_bad_qty: ["pick to bad (by qty)"],
+  staging_lost_rate: ["koli hilang di staging %"],
+  staging_lost_qty: ["koli hilang di staging (by qty)"],
+  fulfillment_hub: ["fulfillment rate % inbound hub"],
+
+  // Dispatch: departure cut-off and the hub handover.
+  on_time_depart: ["on time depart % (by route)"],
+  on_time_arrival_driver: ["on time arrival driver % (by vehicle)"],
+  on_time_arrival_hub1: ["on time arrival hub-1 % (by route)"],
+  on_time_arrival_hub2: ["on time arrival hub-2 % (by route)"],
+  on_time_arrival_hub3: ["on time arrival hub-3 % (by route)"],
+  truck_on_call: ["on call"],
+
+  // Personalia, split by the function that actually feels the shortfall.
+  attendance_inbound: ["inbound attendance %"],
+  attendance_inventory: ["inventory attendance %"],
+  attendance_outbound: ["outbound attendance %"],
+  churn_inbound: ["inbound churn rate %"],
+  churn_inventory: ["inventory churn rate %"],
+  churn_outbound: ["outbound churn rate %"],
+  mandays_daily_worker: ["mandays daily worker"],
 };
 
 const normalizedCache = new Map<string, string>();
