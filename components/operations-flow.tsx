@@ -11,6 +11,8 @@ const nodes = [
   { label: "Fleet", icon: Truck },
 ];
 
+const stateLabel = { good: "Controlled", watch: "Watch", critical: "Critical" } as const;
+
 export function OperationsFlow({ modules }: { modules: FunctionalModule[] }) {
   return (
     <div className="operations-flow">
@@ -18,15 +20,19 @@ export function OperationsFlow({ modules }: { modules: FunctionalModule[] }) {
         const functionModule = modules.find((item) => item.division === node.label);
         const state = functionModule?.status === "controlled" ? "good" : functionModule?.status === "critical" ? "critical" : "watch";
         const Icon = node.icon;
+        const headline = functionModule?.headline ?? "Data belum tersedia";
+        const score = functionModule?.status === "unavailable" ? "—" : functionModule?.score ?? "—";
         return (
           <div className="flow-fragment" key={node.label}>
-            <div className={`flow-node flow-node--${state}`}>
-              <Icon size={20} />
-              <div><strong>{node.label}</strong><span>{functionModule?.headline ?? "Data belum tersedia"}</span></div>
-              <b>{functionModule?.status === "unavailable" ? "—" : functionModule?.score ?? "—"}</b>
-              <i aria-label={state} />
+            {/* The headline is ellipsised to keep the five nodes on one row, so the
+                full text stays reachable on hover and to assistive tech. */}
+            <div className={`flow-node flow-node--${state}`} title={`${node.label} · ${stateLabel[state]} · skor ${score} — ${headline}`}>
+              <Icon size={20} aria-hidden="true" />
+              <div><strong>{node.label}</strong><span>{headline}</span></div>
+              <b>{score}</b>
+              <i role="img" aria-label={`Status ${stateLabel[state]}`} />
             </div>
-            {index < nodes.length - 1 && <ArrowRight className="flow-arrow" size={18} />}
+            {index < nodes.length - 1 && <ArrowRight className="flow-arrow" size={18} aria-hidden="true" />}
           </div>
         );
       })}

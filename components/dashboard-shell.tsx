@@ -59,6 +59,14 @@ const nav = [
 
 const periodLabels: Record<Period, string> = { daily: "Daily", weekly: "Weekly", monthly: "Monthly" };
 
+type ModuleStatus = AnalysisPayload["functionalModules"][number]["status"];
+
+// Status is spelled out next to the bar rather than carried by the bar colour
+// alone. "No data" is deliberately neutral: an unavailable pillar is a missing
+// measurement, not a passing or failing one.
+const moduleStatusLabel: Record<ModuleStatus, string> = { controlled: "Controlled", watch: "Watch", critical: "Critical", unavailable: "No data" };
+const moduleTone = (status: ModuleStatus) => (status === "controlled" ? "good" : status === "unavailable" ? "neutral" : status);
+
 function fmtDate(date: string) {
   return new Intl.DateTimeFormat("id-ID", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(`${date}T00:00:00`));
 }
@@ -174,7 +182,10 @@ function ExecutiveCockpit({ data, openInitiatives }: { data: AnalysisPayload; op
       <section className="function-score-grid" aria-label="Functional operations health">
         {data.functionalModules.map((module) => (
           <article className={`function-score function-score--${module.status}`} key={module.division}>
-            <div><span>{module.division}</span><strong>{module.status === "unavailable" ? "—" : module.score}</strong></div><p>{module.headline}</p><div className="function-score__bar"><i style={{ width: `${module.score}%` }} /></div>
+            <div className="function-score__head"><span>{module.division}</span><strong>{module.status === "unavailable" ? "—" : module.score}</strong></div>
+            <p>{module.headline}</p>
+            <div className="function-score__bar"><i style={{ width: `${module.status === "unavailable" ? 0 : module.score}%` }} /></div>
+            <span className={`status-pill status-pill--${moduleTone(module.status)}`}>{moduleStatusLabel[module.status]}</span>
           </article>
         ))}
       </section>
@@ -197,7 +208,9 @@ function ExecutiveCockpit({ data, openInitiatives }: { data: AnalysisPayload; op
         <SectionHeader eyebrow="Network benchmark" title={`PGS · SRG · BIT · STR pada cut-off ${fmtDate(data.warehouseComparison.find((row) => row.asOf)?.asOf ?? data.context.asOf)}`} description="Skor dihitung fungsi yang sama dengan gauge cockpit, atas basket KPI dan tanggal yang sama. Baris bertanda ⚠ kekurangan pilar yang dilaporkan warehouse lain—peringkatnya tidak setara." />
         <div className="comparison-layout">
           <WarehouseComparisonChart rows={data.warehouseComparison} />
-          <div className="comparison-scoreboard">{[...data.warehouseComparison].sort((a, b) => b.healthScore - a.healthScore).map((row, index) => <div key={row.warehouse}><span>#{index + 1}</span><strong>{row.warehouse}{row.comparable ? "" : " ⚠"}</strong><b>{row.healthScore}</b><small>{row.comparable ? `${row.dataConfidence}% coverage` : `${row.pillarsAvailable}/${row.pillarsTotal} pilar`}</small></div>)}</div>
+          {/* The not-comparable marker is a disclosure, so it carries a text
+              equivalent rather than living only in a bare glyph. */}
+          <div className="comparison-scoreboard">{[...data.warehouseComparison].sort((a, b) => b.healthScore - a.healthScore).map((row, index) => <div key={row.warehouse}><span>#{index + 1}</span><strong>{row.warehouse}{row.comparable ? "" : <em className="not-comparable" role="img" aria-label="Tidak setara: pilar yang dilaporkan lebih sedikit" title={`Hanya ${row.pillarsAvailable} dari ${row.pillarsTotal} pilar tersedia — peringkat tidak setara`}>⚠</em>}</strong><b>{row.healthScore}</b><small>{row.comparable ? `${row.dataConfidence}% coverage` : `${row.pillarsAvailable}/${row.pillarsTotal} pilar`}</small></div>)}</div>
         </div>
       </section>
     </>
@@ -364,7 +377,24 @@ function MetricRegistry({ data }: { data: AnalysisPayload }) {
       {data.health.dataWarnings.length > 0 && <section className="warning-panel"><AlertTriangle size={20} /><div><strong>Quality guardrails active</strong>{data.health.dataWarnings.map((warning) => <p key={warning}>{warning}</p>)}</div></section>}
       <section className="panel metric-panel">
         <div className="table-toolbar"><div><TableProperties size={17} /><span>Period pivot · current vs previous</span></div><div className="search-box"><Search size={17} /><input aria-label="Cari metric" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search metric, role, or function" /><span>{filtered.length}</span></div></div>
-        <div className="metric-table" role="table" aria-label="Metric pivot"><div className="metric-row metric-row--pivot metric-row--head" role="row"><span>Function / role</span><span>Metric</span><span>Aggregation</span><span>Current</span><span>Previous</span><span>Delta</span><span>Coverage</span></div>{filtered.slice(0, 250).map((item) => <div className="metric-row metric-row--pivot" role="row" key={item.id}><span><b>{item.division}</b><small>{item.role}</small></span><strong title={item.detail}>{item.metric}</strong><span className="aggregation-pill">{item.aggregation}</span><b>{fmtMetric(item.current, item.unit)}</b><span>{fmtMetric(item.previous, item.unit)}</span><span className={`movement movement--${item.movement}`}>{item.deltaPct === null ? "—" : fmtSigned(item.deltaPct)}</span><span>{Math.round(item.coverage * 100)}%</span></div>)}</div>
+        {/* Cell roles are not optional here: role="table" with rows but no cells
+            announces as an empty table, which is worse than no roles at all. */}
+        <div className="metric-table" role="table" aria-label="Metric pivot">
+          <div className="metric-row metric-row--pivot metric-row--head" role="row">
+            {["Function / role", "Metric", "Aggregation", "Current", "Previous", "Delta", "Coverage"].map((heading) => <span role="columnheader" key={heading}>{heading}</span>)}
+          </div>
+          {filtered.slice(0, 250).map((item) => (
+            <div className="metric-row metric-row--pivot" role="row" key={item.id}>
+              <span role="cell"><b>{item.division}</b><small>{item.role}</small></span>
+              <strong role="cell" title={item.detail}>{item.metric}</strong>
+              <span role="cell" className="aggregation-pill">{item.aggregation}</span>
+              <b role="cell">{fmtMetric(item.current, item.unit)}</b>
+              <span role="cell">{fmtMetric(item.previous, item.unit)}</span>
+              <span role="cell" className={`movement movement--${item.movement}`}>{item.deltaPct === null ? "—" : fmtSigned(item.deltaPct)}</span>
+              <span role="cell">{Math.round(item.coverage * 100)}%</span>
+            </div>
+          ))}
+        </div>
         <div className="metric-mobile-list" aria-label="Daftar metric mobile">{filtered.slice(0, 80).map((item) => <article className="metric-mobile-card" key={item.id}><header><div><span>{item.division}</span><small>{item.role}</small></div><b>{fmtMetric(item.current, item.unit)}</b></header><h3>{item.metric}</h3><p>{item.detail}</p><footer><span>{item.aggregation}</span><span className={`movement movement--${item.movement}`}>{item.deltaPct === null ? "—" : fmtSigned(item.deltaPct)}</span><span>{Math.round(item.coverage * 100)}% coverage</span></footer></article>)}</div>
       </section>
     </>
