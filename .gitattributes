@@ -1,0 +1,29 @@
+# One line-ending convention in the repository, whoever checks it out.
+#
+# This repo is worked on by more than one agent from more than one platform:
+# Claude Code runs on Windows (core.autocrlf=true), Codex runs in a Linux
+# container. CRLF had been committed into the blobs, so a Linux agent rewriting
+# a file with LF produced a diff touching every line of it. Two agents editing
+# different functions in the same file would then conflict on every line of the
+# file rather than on the lines they actually changed.
+#
+# `text=auto eol=lf` stores LF in the repository and checks LF out everywhere,
+# which is what Node, Next.js, and every tool in this project expect anyway.
+* text=auto eol=lf
+
+# Generated: keep it out of review diffs, but still merge it normally.
+pnpm-lock.yaml linguist-generated=true
+
+# Binary — never touch these bytes.
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.ico    binary
+*.webp   binary
+*.woff   binary
+*.woff2  binary
+*.gz     binary
+*.zip    binary
+*.xlsx   binary
+*.xls    binary
