@@ -1,6 +1,7 @@
 import { metricAliasKeys, normalizeLabel } from "@/lib/data/metric-aliases";
 import glossaryJson from "@/lib/analysis/operations-glossary.json";
 import type {
+  DefinitionStatus,
   MetricDecisionRole,
   MetricFamily,
   MetricReadiness,
@@ -25,6 +26,14 @@ export interface OperationGlossaryEntry {
   details: string;
   explanation: string;
   notes: string;
+}
+
+interface DefinitionResolution {
+  definition: string;
+  status: DefinitionStatus;
+  confidence: "high" | "medium" | "low";
+  basis: string | null;
+  requiredContext: string[];
 }
 
 export const OPERATION_GLOSSARY = glossaryJson as OperationGlossaryEntry[];
@@ -143,13 +152,137 @@ function polarityFor(metric: string): OperationalMetricSemantic["polarity"] {
   return "neutral";
 }
 
-function readinessFor(metric: string, detail: string, mappedKeys: string[]): MetricReadiness {
+function readinessFor(metric: string, detail: string, mappedKeys: string[], definitionStatus: DefinitionStatus): MetricReadiness {
   const value = normalizeLabel(metric);
   const context = normalizeLabel(`${metric} ${detail}`);
-  if (value.includes("schedule accuracy") || value.includes("mp recommendation") || context.includes("tbc") || value === "planogram accuracy") return "unconfirmed";
+  if (definitionStatus === "unresolved" || value.includes("schedule accuracy") || value.includes("mp recommendation") || context.includes("tbc") || value === "planogram accuracy" || value === "gmv" || value.includes("% to gmv")) return "unconfirmed";
   if (mappedKeys.some((key) => DECISION_ENGINE_KEYS.has(key)) && !value.includes("source forecast")) return "decision_ready";
   if (includesAny(value, ["accuracy", "productivity", "sla", "fulfillment", "completion", "utilization", "cancel", "lost", "wastage", "attendance", "churn", "otif", "found", "adoption"])) return "diagnostic_only";
   return "observational";
+}
+
+function definitionResolution(input: CatalogInput, glossary?: OperationGlossaryEntry): DefinitionResolution {
+  const metric = normalizeLabel(input.metric);
+  if (metric.includes("mp recommendation")) return {
+    definition: `Rekomendasi jumlah manpower untuk ${input.role || input.division || "fungsi terkait"} berdasarkan workload, standard productivity, jam tersedia, dan service guardrail.`,
+    status: "inferred",
+    confidence: "medium",
+    basis: "Sumber menjelaskan ini sebagai rekomendasi MP, tetapi formula keputusan diinferensikan dari Forecast/Task, Productivity Target, Budget Mandays, Actual Mandays, dan Attendance pada role yang sama.",
+    requiredContext: ["Formula rekomendasi", "Jam kerja efektif", "Skill mix", "Cut-off workload", "Service guardrail"],
+  };
+  const documented = (glossary?.explanation || glossary?.details || input.detail).trim();
+  const normalizedDocumented = normalizeLabel(documented);
+  if (documented && !["tbc", "n/a", "na", "-"].includes(normalizedDocumented)) return {
+    definition: documented,
+    status: "documented",
+    confidence: "high",
+    basis: "Deskripsi atau penjelasan eksplisit pada sumber glossary.",
+    requiredContext: [],
+  };
+
+  const inferred = (definition: string, basis: string, requiredContext: string[], confidence: DefinitionResolution["confidence"] = "medium"): DefinitionResolution => ({
+    definition,
+    status: "inferred",
+    confidence,
+    basis,
+    requiredContext,
+  });
+
+  if (metric.includes("inventory capacity forecast") && /(frozen|chiller|ambient)/.test(metric)) return inferred(
+    `Proyeksi jumlah inventory pada zona ${metric.includes("frozen") ? "Frozen" : metric.includes("chiller") ? "Chiller" : "Ambient"} untuk horizon perencanaan yang digunakan Supply Chain dan warehouse.`,
+    "Nama metric mengikuti pola forecast kapasitas per zona pada kelompok Inventory Capacity.",
+    ["Horizon forecast", "Cut-off harian", "Unit qty", "In-transit/LDP inclusion"],
+    "high",
+  );
+  if (metric.includes("inventory capacity max") && /(frozen|chiller|ambient)/.test(metric)) return inferred(
+    `Batas jumlah inventory yang dapat ditampung pada zona ${metric.includes("frozen") ? "Frozen" : metric.includes("chiller") ? "Chiller" : "Ambient"} berdasarkan layout dan operating envelope yang berlaku.`,
+    "Nama metric mengikuti pola maximum capacity per zona.",
+    ["Tanggal berlaku kapasitas", "Blocked location", "Safety allowance"],
+    "high",
+  );
+  if (metric.includes("inventory actual max") && /(frozen|chiller|ambient)/.test(metric)) return inferred(
+    `Puncak inventory aktual harian pada zona ${metric.includes("frozen") ? "Frozen" : metric.includes("chiller") ? "Chiller" : "Ambient"}.`,
+    "Nama metric mengikuti pola actual maximum inventory per zona.",
+    ["Metode peak capture", "Cut-off harian", "LDP inclusion"],
+    "high",
+  );
+  if (metric.includes("utilization actual vs forecast") && /(frozen|chiller|ambient)/.test(metric)) return inferred(
+    `Rasio inventory aktual maksimum terhadap forecast pada zona ${metric.includes("frozen") ? "Frozen" : metric.includes("chiller") ? "Chiller" : "Ambient"}.`,
+    "Diturunkan dari pasangan Actual Max dan Capacity Forecast pada zona yang sama.",
+    ["Actual Max zona", "Forecast zona", "Formula dan zero-denominator rule"],
+    "high",
+  );
+  if (metric.includes("utilization actual vs max") && /(frozen|chiller|ambient)/.test(metric)) return inferred(
+    `Rasio inventory aktual maksimum terhadap kapasitas maksimum zona ${metric.includes("frozen") ? "Frozen" : metric.includes("chiller") ? "Chiller" : "Ambient"}.`,
+    "Diturunkan dari pasangan Actual Max dan Max Capacity pada zona yang sama.",
+    ["Actual Max zona", "Max Capacity aktif", "Blocked location"],
+    "high",
+  );
+  if (metric === "relable % to inbound" || metric === "relabel % to inbound") return inferred(
+    "Porsi qty inbound aktual yang benar-benar melalui proses relabel.",
+    "Diturunkan dari Relabel Qty dibagi Qty Actual Inbound; tidak mewakili seluruh inbound.",
+    ["Relabel Qty", "Qty Actual Inbound", "Kesamaan cut-off"],
+    "high",
+  );
+  if (metric === "putaway productivity") return inferred(
+    "Output putaway aktual per manday efektif pada periode yang sama.",
+    "Diturunkan dari Putaway Done dan Actual Mandays Putaway pada role Inv-Putaway.",
+    ["Putaway Done", "Actual Mandays Putaway", "Jam efektif dan adjustment"],
+  );
+  if (metric === "fulfillment rate % warehouse exclude troubleshoot") return inferred(
+    "Persentase demand setelah cancel yang dipenuhi langsung oleh alur warehouse sebelum kontribusi recovery troubleshoot.",
+    "Nama metric membedakan fulfillment dasar dari Fulfillment Rate Warehouse yang memasukkan troubleshoot.",
+    ["Request setelah cancel", "RTS tanpa recovery troubleshoot", "Troubleshoot contribution"],
+  );
+  if (metric === "qty milkrun") return inferred(
+    `Jumlah unit yang masuk ke alur ${normalizeLabel(input.division) === "inbound" ? "inbound" : "outbound"} melalui mekanisme milkrun.`,
+    "Konteks diambil dari division dan pasangan Qty Milkrun pada alur inbound/outbound.",
+    ["Definisi milkrun", "Cut-off", "Apakah termasuk total actual"],
+    "low",
+  );
+  if (metric.startsWith("screening actual")) return inferred(
+    `Jumlah unit yang benar-benar melalui screening pada tahap ${metric.includes("inbound") ? "inbound" : metric.includes("staging") ? "staging" : "outbound"}.`,
+    "Nama metric dan role QC menunjukkan checkpoint screening aktual.",
+    ["Eligibility screening", "Reject/rework result", "Kesamaan grain qty"],
+  );
+  if (metric.startsWith("wastage due to")) return inferred(
+    `Nilai atau qty wastage yang diklasifikasikan berasal dari ${input.role.replace(/^Wastage due to\s*/i, "") || "penyebab terkait"}.`,
+    "Role QC/QM menyatakan cause bucket wastage.",
+    ["Unit qty/value", "Reason-code owner", "Tanggal pengakuan loss"],
+  );
+  if (metric === "total wastage wh") return inferred(
+    "Akumulasi wastage yang menjadi tanggung jawab proses warehouse, sebelum tambahan inbound-to-bad bila dipisahkan.",
+    "Posisi metric berada setelah cause buckets dan sebelum total WH + inbound-to-bad.",
+    ["Komponen penyebab", "Unit qty/value", "Treatment inbound-to-bad"],
+  );
+  if (metric.includes("total wastage") && metric.includes("ib to bad")) return inferred(
+    "Total wastage warehouse ditambah loss inbound-to-bad pada scope dan cut-off yang sama.",
+    "Nama metric menyatakan rekonsiliasi dua loss pool.",
+    ["Total wastage WH", "Inbound-to-bad", "Deduplication rule"],
+  );
+  if (["accumulation", "runrate", "% to gmv mtd", "% to gmv runrate"].includes(metric)) return inferred(
+    metric === "accumulation" ? "Akumulasi wastage pada periode pelaporan aktif."
+      : metric === "runrate" ? "Proyeksi wastage hingga akhir periode berdasarkan realisasi berjalan."
+        : metric === "% to gmv mtd" ? "Rasio akumulasi wastage MTD terhadap GMV MTD pada scope yang sama."
+          : "Rasio proyeksi wastage terhadap proyeksi GMV sampai akhir periode.",
+    "Posisi metric mengikuti blok total wastage, accumulation, run-rate, dan normalisasi terhadap GMV.",
+    ["Nilai wastage", "GMV dengan scope identik", "Hari berjalan", "Metode proyeksi"],
+    "low",
+  );
+  if (metric === "gmv") return inferred(
+    "Gross Merchandise Value yang dipakai sebagai denominator materialitas loss pada scope produk dan periode yang sama.",
+    "Istilah bisnis standar, tetapi scope produk dan cut-off sumber belum dijelaskan.",
+    ["Scope produk", "Gross/net treatment", "Timezone dan cut-off", "MTD/run-rate basis"],
+    "low",
+  );
+
+  return {
+    definition: `Definisi operasional ${input.metric} belum tersedia dan belum aman untuk diinferensikan hanya dari nama kolom.`,
+    status: "unresolved",
+    confidence: "low",
+    basis: null,
+    requiredContext: ["Formula", "Numerator", "Denominator", "Grain", "Owner", "Cut-off"],
+  };
 }
 
 const DECISION_ENGINE_KEYS = new Set([
@@ -188,7 +321,14 @@ function caveatFor(metric: string): string | null {
   return null;
 }
 
-function relatedMetricsFor(family: MetricFamily): string[] {
+function relatedMetricsFor(metric: string, family: MetricFamily): string[] {
+  const value = normalizeLabel(metric);
+  if (value.includes("mp recommendation")) return ["Forecast / task", "Productivity target", "Jam efektif", "Attendance", "SLA", "Capacity"];
+  if (value.includes("schedule accuracy")) return ["Budget mandays", "Scheduled mandays", "Attendance", "Actual mandays", "Workload actual"];
+  if (value.includes("relabel") || value.includes("relable")) return ["Qty actual inbound", "Relabel qty", "Actual mandays relabel", "Productivity relabel"];
+  if (value.includes("troubleshoot")) return ["Task created", "Task executed", "Queue aging", "Mandays troubleshooter", "Found %", "SO FR"];
+  if (value.includes("% to gmv") || value.includes("wastage") || value === "gmv") return ["Wastage by cause", "Wastage value", "GMV scope sama", "MTD cut-off", "Run-rate method"];
+  if (/(frozen|chiller|ambient)/.test(value) && includesAny(value, ["capacity", "utilization", "actual max"])) return ["Forecast zona", "Actual max zona", "Max capacity zona", "Putaway queue", "Overflow"];
   const related: Record<MetricFamily, string[]> = {
     people: ["Forecast workload", "Actual mandays", "Productivity", "SLA"],
     volume: ["Forecast", "Actual throughput", "Mandays", "Capacity"],
@@ -210,8 +350,8 @@ export function buildMetricSemantic(input: CatalogInput): OperationalMetricSeman
   const mappedKeys = metricAliasKeys(input.metric);
   const mappedKeyCount = mappedKeys.length;
   const detail = glossary?.details || input.detail;
-  const readiness = readinessFor(input.metric, `${detail} ${glossary?.explanation ?? ""}`, mappedKeys);
-  const definition = glossary?.explanation || detail.trim() || `${input.metric} untuk fungsi ${input.division || "lintas fungsi"} dan peran ${input.role || "All"}.`;
+  const resolution = definitionResolution(input, glossary);
+  const readiness = readinessFor(input.metric, `${detail} ${glossary?.explanation ?? ""}`, mappedKeys, resolution.status);
   const baseCaveat = caveatFor(input.metric);
   const glossaryNote = glossary?.notes.trim() || null;
   return {
@@ -225,11 +365,15 @@ export function buildMetricSemantic(input: CatalogInput): OperationalMetricSeman
     decisionRole,
     readiness,
     polarity: polarityFor(input.metric),
-    definition,
+    definition: resolution.definition,
+    definitionStatus: resolution.status,
+    definitionConfidence: resolution.confidence,
+    inferenceBasis: resolution.basis,
+    requiredContext: resolution.requiredContext,
     decisionUse: decisionUseFor(family, decisionRole),
     caveat: [baseCaveat, glossaryNote ? `Catatan glossary: ${glossaryNote}.` : null].filter(Boolean).join(" ") || null,
     glossaryNotes: glossaryNote,
-    relatedMetrics: relatedMetricsFor(family),
+    relatedMetrics: relatedMetricsFor(input.metric, family),
     activeCoverage: input.activeCoverage,
     mappedKeyCount,
   };

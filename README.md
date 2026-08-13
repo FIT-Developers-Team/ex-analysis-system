@@ -9,7 +9,11 @@ NEXUS is a connected operations-intelligence dashboard for FIT quick-commerce wa
 - Generates recurring 8-week pain points and at least two evidence-linked project recommendations for each warehouse.
 - Builds auditable causal chains that separate measured facts, statistically supported signals, directional hypotheses, counter-evidence, and evidence still missing.
 - Bundles the 233-entry operations glossary (function, role, BSC/Non-BSC, definition, explanation, and notes) into the metric registry, including definitions whose source values are not active yet.
+- Resolves blank descriptions conservatively as `documented`, `inferred`, or `unresolved`; every inference exposes its basis, confidence, and the context still required, while unresolved metrics are blocked from decisions.
+- Produces a current operating picture such as demand suppression, surge undercoverage, capacity constraint, inventory drag, volume dilution, or process loss—together with observed facts, plausible mechanisms, alternative explanations, and a sequenced action path.
+- Maps five end-to-end operating threads and turns broken stages into a prioritized decision-coverage backlog instead of interpreting blank data as healthy performance.
 - Selects adaptive initiative variants from the current warehouse state; title, trigger, why-now, intervention, and stop-loss change when the operating pattern changes.
+- Treats every initiative as a decision experiment with a portfolio role, explicit question, counterfactual, and leading indicators so the playbook can change when evidence changes.
 - Provides Daily, Weekly, Monthly, or custom date-range pivots with an equal-length previous comparison.
 - Benchmarks PGS, SRG, BIT, and STR on a common period and cut-off.
 - Includes a transparent scenario lab for volume, attendance, cancel, and process-efficiency changes, guarded by demand fill before cancellation.
@@ -30,6 +34,8 @@ flowchart LR
     DQ --> SEM["Metric aliases and derived KPI layer"]
     SEM --> ONT["Operations ontology and readiness guardrails"]
     ONT --> ENG["Operations analysis engine"]
+    ENG --> PIC["Operating picture + alternative explanations"]
+    ENG --> THREAD["End-to-end threads + context-gap backlog"]
     ENG --> UI["Next.js dashboard"]
     ENG --> REL["Guarded relationship signals"]
     ENG --> DEC["Decision brief and risk matrix"]
@@ -89,6 +95,7 @@ The dashboard refreshes every 30 seconds only while the tab is visible and onlin
 - Relabel forecast pieces and troubleshooter mandays are not available in the source; the dashboard discloses those limits and does not manufacture causal claims.
 - `schedule_accuracy` remains visible for inspection but does not trigger pain points or initiatives because its source definition is not yet confirmed.
 - Metric readiness has four explicit states: `decision_ready`, `diagnostic_only`, `observational`, and `unconfirmed`. Unconfirmed definitions remain visible in the registry but are blocked from scoring, risk, relationships, and recommendations.
+- Definition evidence is separate from metric readiness. A recognizable naming pattern can support an `inferred` working definition without making the metric decision-ready; `unresolved` means the formula/grain/cut-off is too ambiguous to infer responsibly.
 - MP Recommendation, division attendance/churn, OTIF, non-picker mandays, and other not-yet-approved fields are not silently promoted into canonical KPI logic. Their source rows remain inspectable until a definition and decision contract are agreed.
 
 ## Measurement integrity rules

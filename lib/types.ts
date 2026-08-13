@@ -133,6 +133,15 @@ export interface Initiative {
   /** Observable condition that starts the playbook rather than a generic calendar date. */
   trigger: string;
   linkedChainIds: string[];
+  /** Role in the portfolio prevents four initiatives from trying to solve the
+   *  same symptom at the same time. */
+  portfolioRole: "contain" | "recover" | "optimize" | "validate";
+  /** The operational question the pilot must answer before it is scaled. */
+  decisionQuestion: string;
+  /** Observable result that would disprove the working mechanism. */
+  counterfactual: string;
+  /** Early signals used before the lagging success gate is available. */
+  leadingIndicators: string[];
 }
 
 export interface AnalysisPayload {
@@ -170,6 +179,9 @@ export interface AnalysisPayload {
   trends: TrendSeries[];
   drivers: DriverSignal[];
   decisionInsights: DecisionInsight[];
+  operatingPicture: OperatingPicture;
+  operationalThreads: OperationalThread[];
+  contextGaps: DecisionCoverageGap[];
   causalChains: CausalChain[];
   painPoints: PainPoint[];
   initiatives: Initiative[];
@@ -218,6 +230,7 @@ export interface CausalChain {
 export type MetricFamily = "people" | "volume" | "capacity" | "productivity" | "service" | "inventory-quality" | "cost" | "fleet" | "other";
 export type MetricDecisionRole = "outcome" | "driver" | "guardrail" | "context";
 export type MetricReadiness = "decision_ready" | "diagnostic_only" | "observational" | "unconfirmed";
+export type DefinitionStatus = "documented" | "inferred" | "unresolved";
 
 export interface OperationalMetricSemantic {
   id: string;
@@ -231,6 +244,10 @@ export interface OperationalMetricSemantic {
   readiness: MetricReadiness;
   polarity: "higher_better" | "lower_better" | "neutral";
   definition: string;
+  definitionStatus: DefinitionStatus;
+  definitionConfidence: "high" | "medium" | "low";
+  inferenceBasis: string | null;
+  requiredContext: string[];
   decisionUse: string;
   caveat: string | null;
   glossaryNotes: string | null;
@@ -254,6 +271,9 @@ export interface IntelligenceSummary {
   observationalMetrics: number;
   unconfirmedMetrics: number;
   semanticCoveragePct: number;
+  documentedDefinitions: number;
+  inferredDefinitions: number;
+  unresolvedDefinitions: number;
   domains: Array<{
     domain: string;
     totalMetrics: number;
@@ -262,6 +282,62 @@ export interface IntelligenceSummary {
     activeCoveragePct: number;
   }>;
   operatingRules: OperatingRule[];
+}
+
+export type OperatingMode = "demand_suppression" | "surge_undercoverage" | "capacity_constrained" | "inventory_drag" | "volume_dilution" | "process_loss" | "balanced" | "insufficient";
+
+export interface OperatingPicture {
+  mode: OperatingMode;
+  label: string;
+  confidence: "high" | "medium" | "low";
+  headline: string;
+  situation: string;
+  primaryConstraint: string;
+  secondaryConstraints: string[];
+  signature: string[];
+  verifiedFacts: string[];
+  plausibleMechanisms: string[];
+  alternativeExplanations: string[];
+  decisionSequence: Array<{
+    phase: "contain" | "diagnose" | "optimize" | "validate";
+    owner: string;
+    action: string;
+    exitGate: string;
+  }>;
+  evidenceBoundary: string;
+}
+
+export interface OperationalThreadStage {
+  id: string;
+  label: string;
+  domain: string;
+  state: "observed" | "constrained" | "partial" | "missing" | "unconfirmed";
+  reading: string;
+  metricKeys: string[];
+}
+
+export interface OperationalThread {
+  id: string;
+  title: string;
+  objective: string;
+  state: "connected" | "constrained" | "partial" | "blocked";
+  coveragePct: number;
+  narrative: string;
+  decisionUse: string;
+  stages: OperationalThreadStage[];
+}
+
+export interface DecisionCoverageGap {
+  id: string;
+  priority: "critical" | "high" | "medium" | "low";
+  kind: "definition" | "measurement" | "denominator" | "ownership" | "cross_process";
+  domain: string;
+  title: string;
+  whyItMatters: string;
+  observedContext: string[];
+  requiredEvidence: string[];
+  decisionUnlocked: string;
+  owner: string;
 }
 
 export interface OperationsEconomics {

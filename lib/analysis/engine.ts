@@ -7,6 +7,7 @@ import type {
   CapacityHistoryPoint,
   CapacityZone,
   CausalChain,
+  DecisionCoverageGap,
   DecisionInsight,
   DriverSignal,
   FunctionalModule,
@@ -15,6 +16,8 @@ import type {
   MetricPoint,
   MetricReading,
   OperationsEconomics,
+  OperatingPicture,
+  OperationalThread,
   OperationalMetricSemantic,
   OperationalDataset,
   PainPoint,
@@ -457,7 +460,8 @@ function buildInitiatives(
 ): Initiative[] {
   type ControlFields = Pick<Initiative, "valueLens" | "successGate" | "stopLoss">;
   type AdaptiveFields = Pick<Initiative, "adaptiveVariant" | "whyNow" | "trigger" | "linkedChainIds">;
-  type Template = Omit<Initiative, "id" | "warehouse" | "confidence" | "priorityScore" | "linkedPainIds" | "evidence" | "priorityBreakdown" | keyof ControlFields | keyof AdaptiveFields>;
+  type ExperimentFields = Pick<Initiative, "portfolioRole" | "decisionQuestion" | "counterfactual" | "leadingIndicators">;
+  type Template = Omit<Initiative, "id" | "warehouse" | "confidence" | "priorityScore" | "linkedPainIds" | "evidence" | "priorityBreakdown" | keyof ControlFields | keyof AdaptiveFields | keyof ExperimentFields>;
   const controls: Record<string, ControlFields> = {
     forecast: { valueLens: "cost", successGate: "Forecast 90–110%, productivity ≥100%, cancel ≤2%.", stopLoss: "Hentikan pengurangan MP jika SLA <98% atau demand fill <97%." },
     people: { valueLens: "cost", successGate: "Attendance ≥96% dan SLA ≥98% pada volume band yang sama.", stopLoss: "Batalkan redeployment jika queue atau SLA memburuk dua cut-off berturut-turut." },
@@ -468,6 +472,17 @@ function buildInitiatives(
     troubleshoot: { valueLens: "quality", successGate: "Troubleshoot FR ≥90% dan aging queue turun.", stopLoss: "Ubah allocation jika tambahan MP tidak menaikkan recovery rate." },
     dcc: { valueLens: "quality", successGate: "DCC ≥98% dan repeat offender turun dua minggu.", stopLoss: "Perluas audit jika koreksi SLOC tidak menurunkan lost/rework." },
     fleet: { valueLens: "service", successGate: "On-time dispatch dan arrival ≥98%.", stopLoss: "Pisahkan ownership bila delay berasal dari readiness warehouse." },
+  };
+  const experiments: Record<string, ExperimentFields> = {
+    forecast: { portfolioRole: "optimize", decisionQuestion: "Apakah staffing band berbasis actual volume mengurangi dilution tanpa mengurangi SLA?", counterfactual: "Jika productivity tidak membaik pada volume band dan effective hours yang sama, forecast mismatch bukan driver utama.", leadingIndicators: ["Remaining workload / remaining hours", "Forecast bias per weekday", "Flex MP activated"] },
+    people: { portfolioRole: "optimize", decisionQuestion: "Di jam mana tambahan atau redeployment MP memberi marginal SLA terbesar?", counterfactual: "Jika queue dan SLA tidak merespons perubahan MP pada workload yang setara, constraint kemungkinan berada di process/capacity.", leadingIndicators: ["Attendance by role", "Queue per jam", "Effective hours"] },
+    productivity: { portfolioRole: "recover", decisionQuestion: "Apakah gap berasal dari method/skill mix atau dari inventory readiness dan waiting loss?", counterfactual: "Jika loss non-labor turun tetapi output per effective hour tetap, target atau method standard perlu dikalibrasi.", leadingIndicators: ["Hourly run-rate", "Pick-to-PF", "Wait/travel/rework minutes"] },
+    cancel: { portfolioRole: "contain", decisionQuestion: "Berapa cancel yang benar-benar diperlukan setelah remaining capacity dibuktikan?", counterfactual: "Jika cancel ditahan tetapi SLA/capacity langsung gagal, sebagian cancel memang melindungi operasi dan perlu trigger yang eksplisit.", leadingIndicators: ["Cancel reason mix", "Projected demand fill", "Remaining capacity"] },
+    capacity: { portfolioRole: "contain", decisionQuestion: "Apakah congestion berasal dari usable capacity, staging/sequence, atau peak sementara?", counterfactual: "Jika queue tetap tinggi setelah headroom pulih, capacity bukan constraint utama.", leadingIndicators: ["Usable slot headroom", "Putaway queue", "Peak duration"] },
+    replenishment: { portfolioRole: "recover", decisionQuestion: "Apakah next-wave replenishment menaikkan Pick-to-PF dan output picking pada H+0/H+1?", counterfactual: "Jika completion naik tetapi Pick-to-PF tidak berubah, suggestion/location priority atau demand mapping perlu diperiksa.", leadingIndicators: ["Next-wave shortage", "Task aging", "Pick-to-PF"] },
+    troubleshoot: { portfolioRole: "recover", decisionQuestion: "Queue mana yang memberi recovery value tertinggi per manday troubleshoot?", counterfactual: "Jika tambahan MP tidak menaikkan FR pada arrival/aging yang sama, kualitas SLOC atau search method lebih dominan.", leadingIndicators: ["Arrival-to-execution ratio", "Aging bucket", "Found value per hour"] },
+    dcc: { portfolioRole: "recover", decisionQuestion: "Apakah koreksi repeat-offender SLOC menurunkan replenish/troubleshoot/pick loss downstream?", counterfactual: "Jika DCC membaik tanpa perubahan downstream loss, scope sampling atau causal path perlu ditinjau.", leadingIndicators: ["Repeat-offender SLOC", "Correction closure", "Lost/rework H+1"] },
+    fleet: { portfolioRole: "validate", decisionQuestion: "Loss service terjadi sebelum warehouse ready, saat dispatch, atau selama perjalanan?", counterfactual: "Jika route tetap terlambat ketika warehouse ready on-time, recovery harus dimiliki fleet/driver/hub.", leadingIndicators: ["Warehouse ready time", "Driver arrival", "Departure-to-arrival variance"] },
   };
   const templates: Record<string, Template> = {
     forecast: { title: "Demand-to-Labor Control Loop", type: "optimize", owner: "Planning + Personalia", effort: "medium", horizonDays: 30, problem: "MPP dibangun dari forecast tetapi actual workload bergerak berbeda.", intervention: "Buat daily reforecast H-1/H-0, flex band ±10%, dan cross-role redeployment berbasis remaining workload.", expectedImpact: "Menekan productivity dilution tanpa mengorbankan inbound SLA atau fulfillment.", measurement: ["Forecast accuracy", "Mandays variance", "Productivity attainment", "SLA checker"], first14Days: ["Baseline error per weekday dan cut-off", "Definisikan flex pool serta trigger 10%", "Pilot satu shift dan review daily"] },
@@ -624,6 +639,7 @@ function buildInitiatives(
       ...template,
       ...adaptation,
       ...controls[key],
+      ...experiments[key],
       id: `${warehouse}-${key}-initiative`,
       warehouse,
       confidence: pain.confidence,
@@ -637,6 +653,7 @@ function buildInitiatives(
     ...templates[key],
     ...adaptive(key, null),
     ...controls[key],
+    ...experiments[key],
     id: `${warehouse}-${key}-initiative`,
     warehouse,
     confidence: "low" as const,
@@ -661,9 +678,13 @@ function driverSignals(kpis: MetricReading[]): DriverSignal[] {
 }
 
 const MODULES: Array<{ division: string; matches: string[]; keys: string[] }> = [
-  { division: "Personalia", matches: ["personalia", "personal"], keys: ["attendance_all", "churn_all", "schedule_accuracy", "mp_fulfill_accuracy"] },
+  // schedule_accuracy stays visible in the semantic registry, but its source
+  // definition is unconfirmed and may exceed 100%, so it cannot shape a module
+  // score or be presented as an operational constraint.
+  { division: "Personalia", matches: ["personalia", "personal"], keys: ["attendance_all", "churn_all", "mp_fulfill_accuracy"] },
   { division: "Inbound", matches: ["inbound"], keys: ["inbound_forecast_accuracy", "inbound_productivity_attainment", "relabel_productivity_attainment", "sla_checker_inbound", "inbound_capacity_utilization"] },
-  { division: "Inventory", matches: ["inventory"], keys: ["putaway_productivity_attainment", "putaway_completion", "inventory_capacity_utilization", "dcc_accuracy", "planogram_accuracy", "troubleshoot_fr", "found_rate", "replenishment_completion"] },
+  // Planogram Accuracy is TBC in the source glossary and follows the same rule.
+  { division: "Inventory", matches: ["inventory"], keys: ["putaway_productivity_attainment", "putaway_completion", "inventory_capacity_utilization", "dcc_accuracy", "troubleshoot_fr", "found_rate", "replenishment_completion"] },
   { division: "Outbound", matches: ["outbound"], keys: ["forecast_accuracy", "productivity_attainment", "fulfillment_rate", "cancel_rate", "outbound_capacity_utilization", "pick_to_pf"] },
   { division: "Fleet", matches: ["fleet"], keys: ["on_time_dispatch", "on_time_arrival", "truck_delivered_rate"] },
 ];
@@ -815,7 +836,10 @@ function intelligenceSummary(catalog: OperationalMetricSemantic[]): Intelligence
       activeCoveragePct: metrics.length ? Math.round(active.reduce((sum, item) => sum + item.activeCoverage, 0) / metrics.length * 100) : 0,
     };
   });
-  const semanticallyUsable = catalog.filter((item) => item.readiness !== "unconfirmed" && (item.detail.trim() || item.family !== "other")).length;
+  const documentedDefinitions = catalog.filter((item) => item.definitionStatus === "documented").length;
+  const inferredDefinitions = catalog.filter((item) => item.definitionStatus === "inferred").length;
+  const unresolvedDefinitions = catalog.filter((item) => item.definitionStatus === "unresolved").length;
+  const semanticallyUsable = documentedDefinitions + inferredDefinitions;
   return {
     sourceMetrics: catalog.length,
     activeMetrics: catalog.filter((item) => item.activeCoverage > 0).length,
@@ -824,6 +848,9 @@ function intelligenceSummary(catalog: OperationalMetricSemantic[]): Intelligence
     observationalMetrics: catalog.filter((item) => item.readiness === "observational").length,
     unconfirmedMetrics: catalog.filter((item) => item.readiness === "unconfirmed").length,
     semanticCoveragePct: catalog.length ? Math.round(semanticallyUsable / catalog.length * 100) : 0,
+    documentedDefinitions,
+    inferredDefinitions,
+    unresolvedDefinitions,
     domains,
     operatingRules: OPERATING_RULES,
   };
@@ -1550,6 +1577,344 @@ function causalChains(
   return chains.sort((a, b) => b.priorityScore - a.priorityScore || stateRank[b.state] - stateRank[a.state]).slice(0, 7);
 }
 
+function operatingPicture(
+  kpis: MetricReading[],
+  zones: CapacityZone[],
+  economics: OperationsEconomics,
+  chains: CausalChain[],
+): OperatingPicture {
+  const value = (key: string) => kpis.find((item) => item.key === key)?.value ?? null;
+  const pct = (input: number | null) => input === null ? "n/a" : `${input.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%`;
+  const forecast = value("forecast_accuracy");
+  const productivity = value("productivity_attainment");
+  const demandFill = value("demand_fill_rate");
+  const fulfillment = value("fulfillment_rate");
+  const cancel = value("cancel_rate");
+  const mandays = value("mandays_variance");
+  const capacity = value("capacity_utilization");
+  const dcc = value("dcc_accuracy");
+  const troubleshoot = value("troubleshoot_fr");
+  const pickface = value("pick_to_pf");
+  const sla = value("sla_checker_inbound");
+  const measured = [forecast, productivity, demandFill, fulfillment, cancel, mandays, capacity, dcc, troubleshoot, pickface, sla].filter((item) => item !== null).length;
+  const postCancelGap = fulfillment !== null && demandFill !== null ? Math.max(0, fulfillment - demandFill) : 0;
+
+  const candidates: Array<{ mode: OperatingPicture["mode"]; label: string; score: number; constraint: string }> = [
+    { mode: "demand_suppression", label: "Demand ditekan sebelum eksekusi", score: Math.max(0, (cancel ?? 0) - 2) * 2 + Math.max(0, 97 - (demandFill ?? 97)) * 2.5 + postCancelGap * 1.5, constraint: "Keputusan cancel dan perlindungan demand" },
+    { mode: "surge_undercoverage", label: "Surge melampaui rencana", score: forecast !== null && forecast > 110 ? (forecast - 110) * 1.8 + Math.max(0, 100 - (productivity ?? 100)) + Math.max(0, -(mandays ?? 0)) : 0, constraint: "Kecukupan flex capacity terhadap demand aktual" },
+    { mode: "capacity_constrained", label: "Flow dibatasi kapasitas fisik", score: Math.max(0, (capacity ?? 75) - 85) * 2.4 + zones.filter((zone) => zone.status === "critical").length * 25 + zones.filter((zone) => zone.status === "watch").length * 10, constraint: "Operating envelope zona dan congestion" },
+    { mode: "inventory_drag", label: "Readiness inventory menahan picking", score: Math.max(0, 98 - (dcc ?? 98)) * 1.2 + Math.max(0, 90 - (troubleshoot ?? 90)) * 1.1 + Math.max(0, 85 - (pickface ?? 85)) * 1.4, constraint: "SLOC, replenishment, troubleshoot, dan pickface" },
+    { mode: "volume_dilution", label: "Volume rendah mendilusi tenaga", score: forecast !== null && forecast < 90 ? (90 - forecast) * 1.8 + Math.max(0, 100 - (productivity ?? 100)) + Math.max(0, mandays ?? 0) : 0, constraint: "Penyesuaian labor terhadap actual workload" },
+    { mode: "process_loss", label: "Loss berada di metode atau skill mix", score: productivity !== null && productivity < 95 ? (95 - productivity) * 1.8 + (forecast !== null && forecast >= 90 && forecast <= 110 ? 12 : 0) + (capacity !== null && capacity < 85 ? 8 : 0) : 0, constraint: "Metode kerja, skill mix, system, dan waktu efektif" },
+  ];
+  const ranked = candidates.sort((a, b) => b.score - a.score);
+  const strongest = ranked[0];
+  const mode: OperatingPicture["mode"] = measured < 4 ? "insufficient" : !strongest || strongest.score < 12 ? "balanced" : strongest.mode;
+  const label = mode === "insufficient" ? "Bukti inti belum cukup" : mode === "balanced" ? "Operating guardrail relatif seimbang" : strongest.label;
+  const primaryConstraint = mode === "insufficient" ? "Coverage metric inti" : mode === "balanced" ? "Menjaga kestabilan lintas fungsi" : strongest.constraint;
+  const secondaryConstraints = ranked.filter((item) => item.mode !== mode && item.score >= 12).slice(0, 2).map((item) => item.label);
+  const signature = [
+    cancel !== null && cancel > 5 ? "CANCEL_HIGH" : null,
+    demandFill !== null && demandFill < 97 ? "DEMAND_FILL_LOW" : null,
+    forecast !== null && forecast > 110 ? "DEMAND_ABOVE_PLAN" : forecast !== null && forecast < 90 ? "DEMAND_BELOW_PLAN" : null,
+    productivity !== null && productivity < 100 ? "PRODUCTIVITY_BELOW_TARGET" : null,
+    capacity !== null && capacity >= 85 ? "CAPACITY_PRESSURE" : null,
+    pickface !== null && pickface < 85 ? "PICKFACE_NOT_READY" : null,
+    mandays !== null && mandays < 0 ? "MANDAYS_BELOW_BUDGET" : mandays !== null && mandays > 8 ? "MANDAYS_OVER_BUDGET" : null,
+  ].filter((item): item is string => Boolean(item));
+  const verifiedFacts = [
+    forecast === null ? null : `Demand awal berada di ${pct(forecast)} terhadap forecast weekly.`,
+    cancel === null || demandFill === null ? null : `Cancel ${pct(cancel)} menyisakan demand fill ${pct(demandFill)}; fulfillment post-cancel ${pct(fulfillment)}.`,
+    productivity === null || mandays === null ? null : `Productivity attainment ${pct(productivity)} dengan actual mandays ${pct(mandays)} terhadap budget.`,
+    capacity === null ? null : `Utilisasi puncak flow ${pct(capacity)}; headroom zona terendah ${pct(economics.capacityHeadroomPct)}.`,
+    pickface === null ? null : `Pick-to-PF ${pct(pickface)}; DCC ${pct(dcc)}; troubleshoot FR ${pct(troubleshoot)}.`,
+    sla === null ? null : `Inbound checker SLA ${pct(sla)}.`,
+  ].filter((item): item is string => Boolean(item)).slice(0, 5);
+  const mechanismEvidence = chains.filter((chain) => chain.state === "verified" || chain.state === "supported").slice(0, 3);
+  const plausibleMechanisms = mechanismEvidence.length
+    ? mechanismEvidence.map((chain) => `${chain.title}: ${chain.outcome}`)
+    : ["Belum ada mekanisme lintas fungsi yang memiliki dukungan data memadai pada window ini."];
+  const alternatives: Record<OperatingPicture["mode"], string[]> = {
+    demand_suppression: ["Constraint kapasitas/jam tersisa memang membuat sebagian demand tidak feasible.", "Policy prioritas SKU/rute atau cut-off upstream mengubah request sebelum floor execution.", "Request before/after cancel tidak memakai cut-off yang identik."],
+    surge_undercoverage: ["Lonjakan terkonsentrasi pada jam atau SKU tertentu, bukan kekurangan kapasitas sepanjang shift.", "Skill mix/OJT, system downtime, atau pickface readiness menahan output meski total MP cukup.", "Forecast weekly dan MPP memakai horizon atau cut-off berbeda."],
+    capacity_constrained: ["Master max capacity belum mengikuti blocked location atau perubahan layout.", "Peak hanya singkat sehingga average SLA belum terdampak.", "Congestion berasal dari sequencing/staging, bukan storage occupancy."],
+    inventory_drag: ["Pick-to-PF atau replenishment tidak dilacak lengkap sehingga hubungan terlihat lebih kuat dari bukti.", "Complexity SKU, batching, atau allocation system menjelaskan productivity tanpa masalah SLOC.", "Troubleshoot FR tinggi tetapi queue aging/value-at-risk masih memburuk."],
+    volume_dilution: ["Actual hours efektif lebih rendah dari mandays administratif.", "Volume rendah terkonsentrasi di akhir shift sehingga redeployment tidak feasible.", "Fixed minimum staffing dibutuhkan untuk safety dan service coverage."],
+    process_loss: ["Productivity target tidak lagi setara dengan mix SKU, zone, atau tenure aktif.", "Waktu tunggu system/equipment belum dipisahkan dari waktu kerja.", "Actual volume atau mandays memakai grain/cut-off yang tidak sama."],
+    balanced: ["Stabilitas agregat dapat menutupi constraint per jam, zona, atau role.", "Metric yang belum tersedia dapat menyembunyikan quality atau cost loss."],
+    insufficient: ["Data kosong dapat berarti scope memang tidak dilacak, bukan performance baik.", "Perbedaan nama metric atau cut-off dapat memutus chain yang sebenarnya tersedia."],
+  };
+  const sequences: Record<OperatingPicture["mode"], OperatingPicture["decisionSequence"]> = {
+    demand_suppression: [
+      { phase: "contain", owner: "Outbound + Planning", action: "Tahan cancel tambahan yang tidak memiliki capacity proof dan reason-code.", exitGate: "Cancel harian <=2% atau constraint terverifikasi per jam." },
+      { phase: "diagnose", owner: "Ops Excellence", action: "Backtest request sebelum/akhir cancel terhadap remaining hours, run-rate, MP, dan SLA.", exitGate: "Sedikitnya 90% cancel memiliki owner dan constraint terukur." },
+      { phase: "optimize", owner: "WH Head", action: "Ubah approval gate dan flex response hanya pada reason yang terbukti avoidable.", exitGate: "Demand fill >=97% tanpa SLA/capacity breach." },
+    ],
+    surge_undercoverage: [
+      { phase: "contain", owner: "Planning + Ops", action: "Aktifkan flex pool dan resequence volume pada proses constraint.", exitGate: "Remaining workload kembali di bawah kapasitas jam tersisa." },
+      { phase: "diagnose", owner: "Ops Excellence", action: "Pisahkan forecast bias, arrival curve, skill mix, dan pickface loss.", exitGate: "Kontributor utama menjelaskan mayoritas gap throughput." },
+      { phase: "optimize", owner: "Personalia + Function Owner", action: "Kalibrasi staffing band per weekday/volume, bukan menambah fixed MP.", exitGate: "Productivity >=100% dan SLA >=98% pada surge band." },
+    ],
+    capacity_constrained: [
+      { phase: "contain", owner: "Inventory + Inbound", action: "Aktifkan overflow dan batasi tambahan volume ke zona constraint.", exitGate: "Utilisasi zona kembali <85%." },
+      { phase: "diagnose", owner: "Inventory", action: "Validasi blocked SLOC, staging queue, putaway lead time, dan max capacity efektif.", exitGate: "Capacity master dan usable slot tereksiliasi." },
+      { phase: "optimize", owner: "WH Head", action: "Ubah sequencing, layout, atau allocation berdasarkan bottleneck yang terbukti.", exitGate: "Headroom aman dan SLA tidak memburuk dua minggu." },
+    ],
+    inventory_drag: [
+      { phase: "contain", owner: "Inventory + Outbound", action: "Prioritaskan next-wave replenish dan troubleshoot value-at-risk.", exitGate: "Shortage pickface dan aging queue turun." },
+      { phase: "diagnose", owner: "Inventory", action: "Bangun loss tree SLOC -> replenish -> troubleshoot -> Pick-to-PF -> productivity.", exitGate: "Repeat-offender SLOC dan loss owner teridentifikasi." },
+      { phase: "optimize", owner: "Inventory Control", action: "Jalankan risk-based DCC dan closed-loop correction per SLOC.", exitGate: "DCC >=98%, Pick-to-PF >=85%, productivity >=100%." },
+    ],
+    volume_dilution: [
+      { phase: "contain", owner: "Personalia + Ops", action: "Bekukan tambahan MP dan redeploy hanya dari remaining workload.", exitGate: "Staffing sesuai volume band aktual." },
+      { phase: "diagnose", owner: "Planning", action: "Pisahkan bias forecast per weekday/cut-off dan fixed minimum staffing.", exitGate: "Forecast bias dan labor floor terukur." },
+      { phase: "optimize", owner: "Function Owner", action: "Terapkan flex band dan review output per effective hour.", exitGate: "Productivity pulih tanpa SLA turun." },
+    ],
+    process_loss: [
+      { phase: "contain", owner: "Function Owner", action: "Pareto loss per jam: wait, travel, system, rework, skill/tenure.", exitGate: "Top loss memiliki owner dan recovery action." },
+      { phase: "diagnose", owner: "Ops Excellence", action: "Bandingkan method, zone, regular/OJT, dan volume band yang setara.", exitGate: "Gap target dapat direproduksi pada slice yang jelas." },
+      { phase: "optimize", owner: "Training + Ops", action: "Pilot satu perubahan metode/skill mix dengan stop-loss quality dan service.", exitGate: "Productivity >=100% tanpa lost/cancel naik." },
+    ],
+    balanced: [
+      { phase: "validate", owner: "Ops Excellence", action: "Pertahankan guardrail dan cari constraint tersembunyi per jam/zona.", exitGate: "Dua minggu stabil dengan coverage lengkap." },
+      { phase: "optimize", owner: "Function Owner", action: "Pilih satu improvement berisiko rendah berbasis cost-to-serve.", exitGate: "Efisiensi membaik tanpa service/quality loss." },
+    ],
+    insufficient: [
+      { phase: "validate", owner: "Data Owner + Ops", action: "Pulihkan definisi, coverage, denominator, dan cut-off metric inti.", exitGate: "Sedikitnya empat pilar inti terukur pada window yang sama." },
+      { phase: "diagnose", owner: "Ops Excellence", action: "Lakukan observasi floor terarah sambil menutup gap data.", exitGate: "Hipotesis utama memiliki bukti kuantitatif dan observasi." },
+    ],
+  };
+  const headline = mode === "demand_suppression" ? `Fulfillment terlihat ${pct(fulfillment)}, tetapi demand fill hanya ${pct(demandFill)}`
+    : mode === "surge_undercoverage" ? `Demand ${pct(forecast)} dari rencana menekan produktivitas dan service buffer`
+      : mode === "capacity_constrained" ? `Operating envelope menyempit pada utilisasi puncak ${pct(capacity)}`
+        : mode === "inventory_drag" ? `Readiness inventory membatasi Pick-to-PF ${pct(pickface)}`
+          : mode === "volume_dilution" ? `Workload ${pct(forecast)} dari forecast belum diimbangi labor secara aman`
+            : mode === "process_loss" ? `Produktivitas ${pct(productivity)} perlu dibedah di luar volume dan kapasitas`
+              : mode === "balanced" ? "Tidak ada satu constraint yang dominan pada window aktif"
+                : "Data belum cukup untuk menggambarkan operasi secara bertanggung jawab";
+  return {
+    mode,
+    label,
+    confidence: measured >= 8 && mechanismEvidence.length >= 2 ? "high" : measured >= 5 ? "medium" : "low",
+    headline,
+    situation: `${verifiedFacts.slice(0, 3).join(" ")} ${secondaryConstraints.length ? `Tekanan sekunder: ${secondaryConstraints.join(" dan ")}.` : ""}`.trim(),
+    primaryConstraint,
+    secondaryConstraints,
+    signature,
+    verifiedFacts,
+    plausibleMechanisms,
+    alternativeExplanations: alternatives[mode],
+    decisionSequence: sequences[mode],
+    evidenceBoundary: "Ini adalah diagnosis operasional berbasis pola terukur, bukan klaim kausal. Scale-up hanya setelah pilot, cut-off, denominator, dan observasi floor mengonfirmasi mekanismenya.",
+  };
+}
+
+function operationalThreads(points: MetricPoint[], current: Window, kpis: MetricReading[]): OperationalThread[] {
+  type StageConfig = { id: string; label: string; domain: string; keys: string[] };
+  type ThreadConfig = Pick<OperationalThread, "id" | "title" | "objective" | "decisionUse"> & { stages: StageConfig[] };
+  const configs: ThreadConfig[] = [
+    {
+      id: "demand-labor-service",
+      title: "Demand -> labor -> service",
+      objective: "Membedakan forecast error, staffing mismatch, process loss, dan demand yang dibatalkan.",
+      decisionUse: "Menentukan apakah respons yang benar adalah reforecast, flex MP, perbaikan metode, atau pembatasan cancel.",
+      stages: [
+        { id: "plan", label: "Forecast", domain: "Planning", keys: ["forecast_accuracy"] },
+        { id: "demand", label: "Demand awal", domain: "Outbound", keys: ["outbound_before_cancel"] },
+        { id: "cancel", label: "Cancel gate", domain: "Outbound", keys: ["cancel_rate"] },
+        { id: "labor", label: "Budget vs actual MP", domain: "Personalia", keys: ["budget_picker_mandays", "actual_picker_mandays"] },
+        { id: "productivity", label: "Output / manday", domain: "Outbound", keys: ["productivity_attainment"] },
+        { id: "service", label: "Demand terlayani", domain: "Service", keys: ["demand_fill_rate"] },
+      ],
+    },
+    {
+      id: "inbound-stock-availability",
+      title: "Inbound -> putaway -> stock available",
+      objective: "Menelusuri apakah barang yang tiba berubah menjadi stock yang siap dipakai tepat waktu.",
+      decisionUse: "Memisahkan vendor/arrival loss, checker constraint, putaway backlog, dan capacity pressure.",
+      stages: [
+        { id: "plan", label: "Inbound plan", domain: "Inbound", keys: ["inbound_forecast_accuracy"] },
+        { id: "receive", label: "Actual received", domain: "Inbound", keys: ["actual_inbound"] },
+        { id: "checker", label: "Checker SLA & output", domain: "Inbound", keys: ["sla_checker_inbound", "inbound_productivity_attainment"] },
+        { id: "putaway", label: "Putaway completion", domain: "Inventory", keys: ["putaway_completion", "putaway_productivity_attainment"] },
+        { id: "capacity", label: "Inventory capacity", domain: "Capacity", keys: ["inventory_capacity_utilization"] },
+      ],
+    },
+    {
+      id: "sloc-pick-service",
+      title: "SLOC -> replenish -> troubleshoot -> picking",
+      objective: "Menguji apakah productivity picking tertahan oleh kesiapan inventory, bukan semata jumlah picker.",
+      decisionUse: "Menentukan urutan DCC, replenishment, recovery, atau method improvement sebelum mengubah manpower.",
+      stages: [
+        { id: "sloc", label: "DCC / SLOC", domain: "Inventory", keys: ["dcc_accuracy"] },
+        { id: "replenish", label: "Replenishment", domain: "Inventory", keys: ["replenishment_completion"] },
+        { id: "recovery", label: "Troubleshoot", domain: "Inventory", keys: ["troubleshoot_fr"] },
+        { id: "pickface", label: "Pick-to-PF", domain: "Outbound", keys: ["pick_to_pf"] },
+        { id: "output", label: "Picker productivity", domain: "Outbound", keys: ["productivity_attainment"] },
+      ],
+    },
+    {
+      id: "request-hub-service",
+      title: "Request -> RTS -> dispatch -> hub",
+      objective: "Memisahkan demand loss, execution loss warehouse, dan downstream/fleet loss.",
+      decisionUse: "Menetapkan owner per tahap agar productivity warehouse tidak dibebani loss yang terjadi setelah RTS.",
+      stages: [
+        { id: "before", label: "Request awal", domain: "Demand", keys: ["outbound_before_cancel"] },
+        { id: "after", label: "Setelah cancel", domain: "Outbound", keys: ["outbound_requested"] },
+        { id: "rts", label: "RTS warehouse", domain: "Outbound", keys: ["outbound_rts"] },
+        { id: "dispatch", label: "On-time dispatch", domain: "Fleet", keys: ["on_time_dispatch"] },
+        { id: "hub", label: "Hub received", domain: "Hub", keys: ["outbound_actual_hub"] },
+      ],
+    },
+    {
+      id: "quality-value",
+      title: "Quality loss -> wastage -> business value",
+      objective: "Mengubah loss quality dari sekadar qty menjadi materialitas bisnis yang dapat diprioritaskan.",
+      decisionUse: "Memilih cause bucket dan project berdasarkan value-at-risk, bukan jumlah kasus saja.",
+      stages: [
+        { id: "handling", label: "Handling loss", domain: "QC / QM", keys: ["wastage_handling"] },
+        { id: "total", label: "Total wastage", domain: "QC / QM", keys: ["total_wastage"] },
+        { id: "gmv", label: "GMV denominator", domain: "Business", keys: ["gmv"] },
+      ],
+    },
+  ];
+  const sumKeys = new Set(["outbound_before_cancel", "outbound_requested", "outbound_rts", "outbound_actual_hub", "actual_inbound", "budget_picker_mandays", "actual_picker_mandays", "wastage_handling", "total_wastage", "gmv"]);
+  const kpiByKey = new Map(kpis.map((item) => [item.key, item]));
+  const read = (key: string): number | null => normalizePercent(key, rules[key] ? derived(points, key, current).value : metricValue(points, key, current, sumKeys.has(key) ? "sum" : "average").value);
+  const format = (key: string, input: number) => rules[key]?.unit === "percent" ? `${input.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%` : input.toLocaleString("id-ID", { maximumFractionDigits: 1 });
+  return configs.map((config) => {
+    let availableKeys = 0;
+    const stages = config.stages.map((stage) => {
+      const readings = stage.keys.map((key) => ({ key, value: read(key) }));
+      const available = readings.filter((item) => item.value !== null);
+      availableKeys += available.length;
+      const constrained = available.some((item) => ["critical", "watch"].includes(kpiByKey.get(item.key)?.severity ?? "neutral"));
+      const state = available.length === 0 ? "missing" as const
+        : available.length < stage.keys.length ? "partial" as const
+          : constrained ? "constrained" as const : "observed" as const;
+      return {
+        ...stage,
+        state,
+        reading: available.length ? available.map((item) => `${rules[item.key]?.label ?? item.key.replaceAll("_", " ")} ${format(item.key, item.value as number)}`).join(" | ") : "Belum terbaca pada window aktif",
+        metricKeys: stage.keys,
+      };
+    });
+    const totalKeys = config.stages.reduce((sum, stage) => sum + stage.keys.length, 0);
+    const coveragePct = totalKeys ? Math.round(availableKeys / totalKeys * 100) : 0;
+    const constrainedStages = stages.filter((stage) => stage.state === "constrained");
+    const missingStages = stages.filter((stage) => stage.state === "missing" || stage.state === "partial");
+    const state: OperationalThread["state"] = constrainedStages.length ? "constrained" : coveragePct === 100 ? "connected" : coveragePct >= 40 ? "partial" : "blocked";
+    return {
+      ...config,
+      state,
+      coveragePct,
+      stages,
+      narrative: constrainedStages.length
+        ? `Tekanan terukur pada ${constrainedStages.map((stage) => stage.label).join(", ")}; validasi urutan proses sebelum mengubah resource.`
+        : missingStages.length ? `Chain belum lengkap pada ${missingStages.map((stage) => stage.label).join(", ")}; kesimpulan downstream masih bersyarat.`
+          : "Seluruh tahap utama terbaca; gunakan pergerakan antar tahap untuk menemukan titik loss.",
+    };
+  });
+}
+
+function decisionCoverageGaps(
+  points: MetricPoint[],
+  current: Window,
+  kpis: MetricReading[],
+  catalog: OperationalMetricSemantic[],
+  threads: OperationalThread[],
+  zones: CapacityZone[],
+): DecisionCoverageGap[] {
+  const gaps: DecisionCoverageGap[] = [];
+  const value = (key: string) => kpis.find((item) => item.key === key)?.value ?? null;
+  const pct = (input: number | null) => input === null ? "n/a" : `${input.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%`;
+  const activeLabel = (label: string) => points.some((point) => point.quality === "valid" && point.value !== null && point.date >= current.start && point.date <= current.end && normalizeLabel(point.metric) === normalizeLabel(label));
+  const add = (gap: DecisionCoverageGap) => { if (!gaps.some((item) => item.id === gap.id)) gaps.push(gap); };
+
+  const unresolvedActive = catalog.filter((item) => item.definitionStatus === "unresolved" && item.activeCoverage > 0);
+  if (unresolvedActive.length) add({
+    id: "unresolved-active-definition", priority: "high", kind: "definition", domain: "Data governance",
+    title: `${unresolvedActive.length} metric aktif belum memiliki definisi yang aman`,
+    whyItMatters: "Angka aktif tanpa formula, grain, dan owner dapat tampak informatif tetapi mengubah keputusan ke arah yang salah.",
+    observedContext: unresolvedActive.slice(0, 4).map((item) => `${item.division} / ${item.role}: ${item.metric}`),
+    requiredEvidence: ["Formula", "Numerator/denominator", "Grain", "Cut-off", "Owner"],
+    decisionUnlocked: "Menentukan apakah metric boleh menjadi outcome, driver, guardrail, atau hanya konteks.", owner: "Data Owner + Function Owner",
+  });
+  const activePlanningOutputs = catalog.filter((item) => item.activeCoverage > 0 && item.readiness === "unconfirmed" && (normalizeLabel(item.metric).includes("schedule accuracy") || normalizeLabel(item.metric).includes("mp recommendation")));
+  if (activePlanningOutputs.length) add({
+    id: "planning-output-contract", priority: "high", kind: "definition", domain: "Personalia + Planning",
+    title: "Plan, recommendation, schedule, dan actual manpower belum memiliki kontrak yang utuh",
+    whyItMatters: "Tanpa membedakan output rekomendasi dari manpower aktual, sistem dapat menilai planning seolah-olah execution.",
+    observedContext: activePlanningOutputs.slice(0, 5).map((item) => `${item.metric}: ${Math.round(item.activeCoverage * 100)}% coverage`),
+    requiredEvidence: ["Formula MP Recommendation", "Scheduled hours", "Attendance", "Actual mandays", "Role transfer"],
+    decisionUnlocked: "Mengukur planning bias, attendance loss, dan true labor efficiency secara terpisah.", owner: "Personalia + Planning",
+  });
+  const cancel = value("cancel_rate");
+  if (cancel !== null && cancel > 2) add({
+    id: "cancel-capacity-proof", priority: cancel > 10 ? "critical" : "high", kind: "ownership", domain: "Outbound + Planning",
+    title: "Cancel belum memiliki capacity-proof dan reason-code yang dapat diuji",
+    whyItMatters: "Request setelah cancel dapat membuat fulfillment terlihat sehat sekaligus menghapus demand dan denominator productivity.",
+    observedContext: [`Cancel ${pct(cancel)}.`, `Demand fill ${pct(value("demand_fill_rate"))}; warehouse FR ${pct(value("fulfillment_rate"))}.`],
+    requiredEvidence: ["Cancel reason-code", "Remaining volume", "Remaining hours", "Run-rate per jam", "Approver", "Projected SLA"],
+    decisionUnlocked: "Membedakan cancel wajib karena constraint dari cancel avoidable yang menghilangkan demand.", owner: "Outbound + Planning",
+  });
+  const troubleshootMandays = points.some((point) => normalizeLabel(point.role).includes("troubleshoot") && normalizeLabel(point.metric).includes("manday"));
+  if (!troubleshootMandays && value("troubleshoot_fr") !== null) add({
+    id: "troubleshoot-labor", priority: "high", kind: "measurement", domain: "Inventory + Personalia",
+    title: "Troubleshoot FR belum dapat dihubungkan dengan manpower",
+    whyItMatters: "FR dapat naik/turun karena arrival mix, aging, SLOC quality, atau MP; tanpa workload dan mandays, rekomendasi staffing tetap spekulatif.",
+    observedContext: [`Troubleshoot FR ${pct(value("troubleshoot_fr"))}.`, "Mandays role troubleshoot tidak tersedia."],
+    requiredEvidence: ["Task arrival per jam", "Task executed", "Aging bucket", "Actual mandays troubleshooter", "Found value"],
+    decisionUnlocked: "Menentukan staffing curve dan prioritas recovery berdasarkan marginal FR per manday.", owner: "Inventory + Personalia",
+  });
+  const relabelForecast = points.some((point) => normalizeLabel(point.metric).includes("forecast") && (normalizeLabel(point.metric).includes("relabel") || normalizeLabel(point.metric).includes("relable")));
+  if (!relabelForecast && (activeLabel("Relable Qty") || activeLabel("Relabel Qty"))) add({
+    id: "relabel-scope", priority: "medium", kind: "denominator", domain: "Inbound",
+    title: "Relabel productivity belum memiliki eligible-volume forecast",
+    whyItMatters: "Tidak semua inbound direlabel; memakai total inbound sebagai denominator kebutuhan MP akan membesar-kecilkan workload.",
+    observedContext: ["Actual relabel tersedia.", "Forecast pcs yang eligible relabel tidak tersedia."],
+    requiredEvidence: ["Inbound eligible relabel", "Reason/type relabel", "Arrival curve", "Actual mandays relabel"],
+    decisionUnlocked: "Membangun MP Recommendation Relabel yang tidak bias terhadap total inbound.", owner: "Inbound + Planning",
+  });
+  const qualityThread = threads.find((thread) => thread.id === "quality-value");
+  if (qualityThread && qualityThread.coveragePct < 100) add({
+    id: "quality-value-denominator", priority: activeLabel("Total wastage WH") || activeLabel("Total wastage (WH + IB to Bad)") ? "high" : "medium", kind: "denominator", domain: "QC / QM + Business",
+    title: "Quality loss belum tertutup sampai materialitas GMV",
+    whyItMatters: "Qty kasus tidak menunjukkan nilai bisnis; project bisa mengejar kasus besar tetapi value kecil.",
+    observedContext: qualityThread.stages.map((stage) => `${stage.label}: ${stage.state}`),
+    requiredEvidence: ["Wastage by cause dan value", "GMV scope sama", "MTD cut-off", "Run-rate method", "Owner loss"],
+    decisionUnlocked: "Memprioritaskan quality project berdasarkan value-at-risk dan % to GMV yang dapat direkonsiliasi.", owner: "QC/QM + Finance/Data Owner",
+  });
+  const inventoryThread = threads.find((thread) => thread.id === "sloc-pick-service");
+  if (inventoryThread && inventoryThread.coveragePct < 80) add({
+    id: "inventory-service-chain", priority: value("productivity_attainment") !== null && (value("productivity_attainment") as number) < 100 ? "high" : "medium", kind: "cross_process", domain: "Inventory + Outbound",
+    title: "Chain inventory-to-picking belum cukup lengkap untuk menjelaskan productivity",
+    whyItMatters: "Tanpa DCC, replenishment, troubleshoot, dan Pick-to-PF pada cut yang sama, penambahan picker dapat menutup gejala tanpa menghapus constraint.",
+    observedContext: inventoryThread.stages.map((stage) => `${stage.label}: ${stage.state}`),
+    requiredEvidence: inventoryThread.stages.filter((stage) => stage.state === "missing" || stage.state === "partial").map((stage) => stage.label),
+    decisionUnlocked: "Memilih antara DCC/replenishment recovery, troubleshoot allocation, atau method improvement picker.", owner: "Inventory + Outbound",
+  });
+  const unavailableZones = zones.filter((zone) => zone.status === "unavailable" || zone.note);
+  if (unavailableZones.length) add({
+    id: "zonal-capacity-contract", priority: "high", kind: "measurement", domain: "Capacity + Inventory",
+    title: "Operating envelope zona belum sepenuhnya dapat dipercaya",
+    whyItMatters: "Rata-rata warehouse dapat menutupi Frozen/Chiller/Ambient yang jenuh atau master capacity yang sudah tidak berlaku.",
+    observedContext: unavailableZones.map((zone) => `${zone.zone}: ${zone.note ?? "actual/max tidak tersedia"}`),
+    requiredEvidence: ["Actual max per zona", "Max usable capacity", "Blocked SLOC", "Effective date layout", "Overflow capacity"],
+    decisionUnlocked: "Menentukan overflow, volume admission, dan layout action sebelum congestion terjadi.", owner: "Inventory + Facility",
+  });
+  if (value("on_time_dispatch") !== null && !points.some((point) => normalizeLabel(point.metric).includes("delay owner") || normalizeLabel(point.metric).includes("reason fleet"))) add({
+    id: "fleet-delay-ownership", priority: "medium", kind: "ownership", domain: "Warehouse + Fleet",
+    title: "Punctuality belum memiliki owner loss per route dan tahap",
+    whyItMatters: "Dispatch, depart, arrival, dan hub received berada pada ownership berbeda; agregat on-time tidak menjelaskan titik kegagalan.",
+    observedContext: [`On-time dispatch ${pct(value("on_time_dispatch"))}.`, `On-time arrival ${pct(value("on_time_arrival"))}.`],
+    requiredEvidence: ["Route", "Delay stage", "Reason-code", "Warehouse ready time", "Driver arrival", "Hub received cut-off"],
+    decisionUnlocked: "Memisahkan recovery action warehouse, transporter, driver, dan hub.", owner: "Fleet + Outbound",
+  });
+  const priorityRank: Record<DecisionCoverageGap["priority"], number> = { critical: 4, high: 3, medium: 2, low: 1 };
+  return gaps.sort((a, b) => priorityRank[b.priority] - priorityRank[a.priority] || a.domain.localeCompare(b.domain)).slice(0, 8);
+}
+
 export function buildAnalysis(
   dataset: OperationalDataset,
   warehouse: string,
@@ -1613,6 +1978,9 @@ export function buildAnalysis(
   const chains = causalChains(warehousePoints, current, kpis, zones, relationships, economics, pains);
   const semanticCatalog = metricSemanticCatalog(warehousePoints, current);
   const intelligence = intelligenceSummary(semanticCatalog);
+  const picture = operatingPicture(kpis, zones, economics, chains);
+  const threads = operationalThreads(warehousePoints, current, kpis);
+  const contextGaps = decisionCoverageGaps(warehousePoints, current, kpis, semanticCatalog, threads, zones);
   const chartWindow = visualWindow(current, effectivePeriod);
   const sync = dataset.sync ?? {
     provider: dataset.sourceMode,
@@ -1666,6 +2034,9 @@ export function buildAnalysis(
     trends: activeTrendKeys.map((key) => dailyTrend(warehousePoints, key, chartWindow)),
     drivers: driverSignals(kpis),
     decisionInsights: decisionInsights(kpis, zones, pains, relationships),
+    operatingPicture: picture,
+    operationalThreads: threads,
+    contextGaps,
     causalChains: chains,
     painPoints: pains,
     initiatives: buildInitiatives(warehouse, pains, relationships, kpis, zones, economics, chains),

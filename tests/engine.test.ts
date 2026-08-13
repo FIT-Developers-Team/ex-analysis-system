@@ -65,10 +65,18 @@ describe("analysis engine", () => {
     expect(output.economics.costToServeMdPerThousand).toBeGreaterThan(0);
     expect(output.initiatives.every((item) => item.successGate && item.stopLoss && item.priorityBreakdown)).toBe(true);
     expect(output.initiatives.every((item) => item.adaptiveVariant && item.whyNow && item.trigger)).toBe(true);
+    expect(output.initiatives.every((item) => item.portfolioRole && item.decisionQuestion && item.counterfactual && item.leadingIndicators.length)).toBe(true);
     expect(output.causalChains.length).toBeGreaterThanOrEqual(5);
     expect(output.causalChains.some((item) => item.id === "cancel-demand-service" && item.state === "verified")).toBe(true);
     expect(output.intelligence.sourceMetrics).toBeGreaterThan(0);
+    expect(output.intelligence.documentedDefinitions + output.intelligence.inferredDefinitions + output.intelligence.unresolvedDefinitions).toBe(output.intelligence.sourceMetrics);
     expect(output.metricCatalog.every((item) => item.readiness && item.decisionRole && item.family)).toBe(true);
+    expect(output.operatingPicture.mode).toBe("demand_suppression");
+    expect(output.operatingPicture.verifiedFacts.length).toBeGreaterThan(1);
+    expect(output.operatingPicture.alternativeExplanations.length).toBeGreaterThan(1);
+    expect(output.operationalThreads).toHaveLength(5);
+    expect(output.operationalThreads.find((item) => item.id === "demand-labor-service")?.coveragePct).toBeGreaterThan(80);
+    expect(output.contextGaps.some((item) => item.id === "cancel-capacity-proof")).toBe(true);
   });
 
   it("supports a flexible custom window with an equal-length comparison", () => {
@@ -113,6 +121,7 @@ describe("analysis engine", () => {
     const recommendation = output.metricCatalog.find((item) => item.metric === "MP Recommendation All Division");
     expect(schedule?.readiness).toBe("unconfirmed");
     expect(recommendation?.readiness).toBe("unconfirmed");
+    expect(output.functionalModules.flatMap((module) => module.kpis).some((item) => item.key === "schedule_accuracy" || item.key === "planogram_accuracy")).toBe(false);
     expect(output.relationshipSignals.some((item) => item.driverKey === "schedule_accuracy")).toBe(false);
     expect(output.initiatives.every((item) => !item.whyNow.toLowerCase().includes("schedule accuracy"))).toBe(true);
   });
