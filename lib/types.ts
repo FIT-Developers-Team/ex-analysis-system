@@ -124,6 +124,12 @@ export interface AnalysisPayload {
     narrative: string;
     confidence: number;
     dataWarnings: string[];
+    /** Keys of every KPI currently breaching its guardrail. A non-empty list
+     *  blocks the "controlled" status so a critical breach cannot be averaged away. */
+    criticalKpis: string[];
+    /** How many of the scored KPI pillars actually had data this window. */
+    pillarsAvailable: number;
+    pillarsTotal: number;
   };
   kpis: MetricReading[];
   trends: TrendSeries[];
@@ -164,6 +170,9 @@ export interface CapacityZone {
   maximum: number | null;
   utilization: number | null;
   status: "critical" | "watch" | "controlled" | "unavailable";
+  /** Set when the reading is present but cannot be trusted, e.g. two zones
+   *  reporting an identical actual. Null when the reading is clean. */
+  note: string | null;
 }
 
 export interface CapacityHistoryPoint {
@@ -211,11 +220,19 @@ export interface RelationshipSignal {
   driverDomain: string;
   outcomeDomain: string;
   coefficient: number | null;
+  /** Two-sided p-value for the correlation. Confidence is derived from this
+   *  together with the sample size, not from the sample size alone. */
+  pValue: number | null;
+  /** True when p clears the Bonferroni threshold for the whole hypothesis set. */
+  survivesMultiplicity: boolean;
   sampleSize: number;
   lagDays: number;
   strength: "strong" | "moderate" | "weak" | "insufficient";
   confidence: "high" | "medium" | "low";
   alignment: "supports" | "contradicts" | "inconclusive";
+  /** Names the variable that appears on both sides of the pair. When set, the
+   *  correlation is partly an algebraic identity and cannot evidence a mechanism. */
+  sharedTerm: string | null;
   narrative: string;
   decision: string;
 }
@@ -259,12 +276,22 @@ export interface PivotMetricRow {
 
 export interface WarehouseComparisonRow {
   warehouse: string;
+  /** Computed by the same function as AnalysisPayload.health.score, over the
+   *  same KPI basket, on the shared cut-off date. The two can no longer diverge. */
   healthScore: number;
+  status: "critical" | "watch" | "controlled";
+  asOf: string | null;
   forecastAccuracy: number | null;
   productivity: number | null;
   fulfillment: number | null;
+  demandFillRate: number | null;
   cancelRate: number | null;
   dataConfidence: number;
+  pillarsAvailable: number;
+  pillarsTotal: number;
+  /** False when this warehouse is missing pillars the others report, so its
+   *  rank is not like-for-like. */
+  comparable: boolean;
 }
 
 export interface SimulationInputs {

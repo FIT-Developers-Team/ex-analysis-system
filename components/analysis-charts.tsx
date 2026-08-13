@@ -192,7 +192,9 @@ export function WarehouseComparisonChart({ rows }: { rows: WarehouseComparisonRo
     yAxis: { type: "value", min: 0, max: 110, axisLabel: { color: "#738092", fontSize: 9, formatter: "{value}%" }, splitLine: split },
     series: [
       { name: "Productivity", type: "bar", data: rows.map((row) => row.productivity), barMaxWidth: 18, itemStyle: { color: palette[0], borderRadius: [4, 4, 0, 0] } },
-      { name: "Fulfillment", type: "line", data: rows.map((row) => row.fulfillment), showSymbol: true, symbolSize: 7, lineStyle: { color: palette[1], width: 2 }, itemStyle: { color: palette[1] } },
+      // Demand fill rate rather than warehouse FR: post-cancel FR sits at ~100% for
+      // every warehouse, so it plots as a flat line that separates nobody.
+      { name: "Demand fill rate", type: "line", data: rows.map((row) => row.demandFillRate), showSymbol: true, symbolSize: 7, lineStyle: { color: palette[1], width: 2 }, itemStyle: { color: palette[1] } },
       { name: "Forecast accuracy", type: "line", data: rows.map((row) => row.forecastAccuracy), showSymbol: true, symbolSize: 7, lineStyle: { color: palette[2], width: 2, type: "dashed" }, itemStyle: { color: palette[2] } },
     ],
   }} />;

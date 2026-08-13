@@ -1,4 +1,5 @@
 import { metricAliasKeys, normalizeLabel } from "@/lib/data/metric-aliases";
+import { PRIORITY_WAREHOUSES } from "@/lib/types";
 import type {
   AnalysisPayload,
   AggregationMode,
@@ -108,6 +109,11 @@ function derived(points: MetricPoint[], key: string, window: Window): Aggregate 
       return ratio(metricValue(points, "checker_productivity", window), metricValue(points, "checker_productivity_target", window));
     case "forecast_accuracy":
       return ratio(metricValue(points, "outbound_requested", window, "sum"), metricValue(points, "forecast_weekly_outbound", window, "sum"));
+    case "demand_fill_rate":
+      // Deliberately measured against demand BEFORE cancellation. fulfillment_rate
+      // divides by the post-cancel request, so cancelling work raises it; this one
+      // cannot be improved by removing demand.
+      return ratio(metricValue(points, "outbound_rts", window, "sum"), metricValue(points, "outbound_before_cancel", window, "sum"));
     case "productivity_attainment":
       return ratio(metricValue(points, "picker_productivity", window), metricValue(points, "picker_productivity_target", window));
     case "putaway_productivity_attainment":
@@ -158,7 +164,7 @@ function derived(points: MetricPoint[], key: string, window: Window): Aggregate 
 
 function normalizePercent(key: string, value: number | null): number | null {
   if (value === null) return null;
-  const directPercent = new Set(["inbound_forecast_accuracy", "inbound_productivity_attainment", "forecast_accuracy", "productivity_attainment", "putaway_productivity_attainment", "relabel_productivity_attainment", "inbound_capacity_utilization", "inventory_capacity_utilization", "outbound_capacity_utilization", "mandays_variance", "cancel_rate", "capacity_utilization", "dcc_accuracy"]);
+  const directPercent = new Set(["inbound_forecast_accuracy", "inbound_productivity_attainment", "forecast_accuracy", "demand_fill_rate", "productivity_attainment", "putaway_productivity_attainment", "relabel_productivity_attainment", "inbound_capacity_utilization", "inventory_capacity_utilization", "outbound_capacity_utilization", "mandays_variance", "cancel_rate", "capacity_utilization", "dcc_accuracy"]);
   return !directPercent.has(key) && Math.abs(value) <= 2 ? value * 100 : value;
 }
 
@@ -172,10 +178,13 @@ const rules: Record<string, { label: string; unit: MetricReading["unit"]; target
   inbound_capacity_utilization: { label: "Inbound utilization", unit: "percent", target: 85, higher: false, interpretation: "Actual inbound terhadap max inbound capacity." },
   inventory_capacity_utilization: { label: "Inventory utilization", unit: "percent", target: 85, higher: false, interpretation: "Peak inventory actual terhadap max inventory capacity." },
   outbound_capacity_utilization: { label: "Outbound utilization", unit: "percent", target: 85, higher: false, interpretation: "Request setelah cancel terhadap max outbound capacity." },
-  fulfillment_rate: { label: "Warehouse FR", unit: "percent", target: 99, higher: true, interpretation: "RTS terhadap request setelah cancel." },
+  fulfillment_rate: { label: "Warehouse FR", unit: "percent", target: 99, higher: true, interpretation: "RTS terhadap request setelah cancel; kebal terhadap pembatalan, baca bersama Demand fill rate." },
+  // Target 97 is derived from the guardrails the business already set, not invented:
+  // FR target 99% x (100% - cancel target 2%) = 97.02%.
+  demand_fill_rate: { label: "Demand fill rate", unit: "percent", target: 97, higher: true, interpretation: "RTS terhadap request sebelum cancel; inilah porsi permintaan yang benar-benar dilayani." },
   sla_checker_inbound: { label: "Inbound checker SLA", unit: "percent", target: 98, higher: true, interpretation: "Guardrail lead time saat mengatur manpower." },
   mandays_variance: { label: "Mandays vs budget", unit: "percent", target: 0, higher: false, interpretation: "Negatif berarti hemat; valid hanya jika SLA dan productivity tetap sehat." },
-  capacity_utilization: { label: "Peak capacity", unit: "percent", target: 85, higher: false, interpretation: "Utilisasi tertinggi inbound, inventory, atau outbound." },
+  capacity_utilization: { label: "Utilisasi puncak alur", unit: "percent", target: 85, higher: false, interpretation: "Utilisasi tertinggi di antara inbound, inventory, dan outbound. Ini bukan okupansi gudang—untuk itu baca panel zona." },
   cancel_rate: { label: "Request cancelled", unit: "percent", target: 2, higher: false, interpretation: "Before cancel vs after cancel; harus dibaca bersama FR dan productivity." },
   troubleshoot_fr: { label: "Troubleshoot FR", unit: "percent", target: 90, higher: true, interpretation: "Task executed terhadap task created." },
   dcc_accuracy: { label: "DCC accuracy", unit: "percent", target: 98, higher: true, interpretation: "Rata-rata accuracy Qty, SLOC, dan SLOC × Qty." },
@@ -236,26 +245,44 @@ function dailyTrend(points: MetricPoint[], key: string, asOf: string): TrendSeri
   return { key, label: rule.label, unit: rule.unit, values };
 }
 
+/**
+ * Converts a shortfall into a 0–100 score without ever reaching the floor.
+ *
+ * The previous linear form `100 - gap * slope` hit exactly 0 once the gap passed
+ * 100/slope, so a chronically underperforming metric froze at zero and stopped
+ * carrying information — schedule accuracy scored 0 on 100% of STR's observations,
+ * which is why the People risk row read as a flat line for eight straight weeks.
+ *
+ * This halves the score every `50 / slope` points of shortfall, so it matches the
+ * old calibration where it mattered (still 50 at the same gap) and keeps ranking
+ * warehouses that are all far below target.
+ */
+function decayScore(gap: number, slope: number): number {
+  if (gap <= 0) return 100;
+  return clamp(100 * Math.pow(0.5, (gap * slope) / 50));
+}
+
 function scoreMetric(key: string, value: number | null): number {
   if (value === null) return 50;
   switch (key) {
     case "forecast_accuracy":
-    case "inbound_forecast_accuracy": return clamp(100 - Math.abs(value - 100) * 2.5);
+    case "inbound_forecast_accuracy": return decayScore(Math.abs(value - 100), 2.5);
     case "productivity_attainment":
     case "inbound_productivity_attainment":
     case "putaway_productivity_attainment": return clamp(value);
     case "relabel_productivity_attainment": return clamp(value);
-    case "fulfillment_rate": return clamp(100 - Math.max(0, 99 - value) * 8);
-    case "sla_checker_inbound": return clamp(100 - Math.max(0, 98 - value) * 5);
-    case "mandays_variance": return clamp(100 - Math.max(0, value) * 4);
+    case "fulfillment_rate": return decayScore(99 - value, 8);
+    case "demand_fill_rate": return decayScore(97 - value, 4);
+    case "sla_checker_inbound": return decayScore(98 - value, 5);
+    case "mandays_variance": return decayScore(value, 4);
     case "capacity_utilization":
     case "inbound_capacity_utilization":
     case "inventory_capacity_utilization":
-    case "outbound_capacity_utilization": return value <= 85 ? 100 : clamp(100 - (value - 85) * 6);
-    case "cancel_rate": return clamp(100 - Math.max(0, value - 2) * 10);
+    case "outbound_capacity_utilization": return decayScore(value - 85, 6);
+    case "cancel_rate": return decayScore(value - 2, 10);
     case "dcc_accuracy": return clamp(value);
-    case "attendance_all": return clamp(100 - Math.max(0, 96 - value) * 5);
-    case "churn_all": return clamp(100 - Math.max(0, value - 5) * 8);
+    case "attendance_all": return decayScore(96 - value, 5);
+    case "churn_all": return decayScore(value - 5, 8);
     case "schedule_accuracy":
     case "replenishment_completion":
     case "putaway_completion":
@@ -264,9 +291,85 @@ function scoreMetric(key: string, value: number | null): number {
     case "mp_fulfill_accuracy":
     case "truck_delivered_rate":
     case "on_time_dispatch":
-    case "on_time_arrival": return clamp(100 - Math.max(0, (rules[key]?.target ?? 95) - value) * 5);
+    case "on_time_arrival": return decayScore((rules[key]?.target ?? 95) - value, 5);
     default: return clamp(value);
   }
+}
+
+/** The KPI basket. Everything shown on a card is also scored — nothing is
+ *  displayed as a headline number while sitting outside the health score. */
+const KPI_KEYS = [
+  "forecast_accuracy",
+  "productivity_attainment",
+  "fulfillment_rate",
+  "demand_fill_rate",
+  "sla_checker_inbound",
+  "mandays_variance",
+  "capacity_utilization",
+  "cancel_rate",
+  "troubleshoot_fr",
+  "dcc_accuracy",
+  "pick_to_pf",
+] as const;
+
+export interface HealthSummary {
+  score: number;
+  status: "critical" | "watch" | "controlled";
+  criticalKpis: string[];
+  pillarsAvailable: number;
+  pillarsTotal: number;
+}
+
+/**
+ * Single definition of warehouse health, used by both the cockpit gauge and the
+ * benchmark table. These used to be two separate calculations over two different
+ * KPI baskets, so the same warehouse could show 75 in one place and 62 in another.
+ *
+ * A breaching KPI blocks the "controlled" status outright. Averaging a basket lets
+ * two critical breaches hide behind five healthy metrics, which is how a warehouse
+ * cancelling 43% of its demand still read as merely "watch".
+ */
+function healthFrom(kpis: MetricReading[]): HealthSummary {
+  const scored = kpis.filter((item) => item.value !== null);
+  const criticalKpis = kpis.filter((item) => item.severity === "critical").map((item) => item.key);
+  const score = scored.length
+    ? Math.round(scored.reduce((sum, item) => sum + scoreMetric(item.key, item.value), 0) / scored.length)
+    : 50;
+  let status: HealthSummary["status"] = scored.length < 3 ? "watch" : score < 65 ? "critical" : score < 82 ? "watch" : "controlled";
+  if (criticalKpis.length > 0 && status === "controlled") status = "watch";
+  return { score, status, criticalKpis, pillarsAvailable: scored.length, pillarsTotal: kpis.length };
+}
+
+/**
+ * Dates on which the warehouse did not run. A zero is a real number to the parser,
+ * so closed days entered correlation series as genuine observations — STR's
+ * headline r of -0.92 was -0.63 once its 18 zero-volume days were removed.
+ */
+function noOperationDates(points: MetricPoint[]): Set<string> {
+  const volume = new Map<string, number>();
+  for (const point of points) {
+    if (point.quality !== "valid" || point.value === null) continue;
+    const keys = metricAliasKeys(point.metric);
+    if (!keys.includes("outbound_requested") && !keys.includes("outbound_before_cancel") && !keys.includes("outbound_rts")) continue;
+    volume.set(point.date, Math.max(volume.get(point.date) ?? 0, point.value));
+  }
+  return new Set([...volume.entries()].filter(([, value]) => value === 0).map(([date]) => date));
+}
+
+/** Abramowitz & Stegun 7.1.26 — enough precision for a p-value badge. */
+function erf(x: number): number {
+  const t = 1 / (1 + 0.3275911 * Math.abs(x));
+  const y = 1 - ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
+  return x >= 0 ? y : -y;
+}
+
+/** Two-sided p for a Pearson r, via the t statistic with a normal approximation. */
+function correlationPValue(coefficient: number, sampleSize: number): number | null {
+  const df = sampleSize - 2;
+  if (df < 1 || Math.abs(coefficient) >= 1) return null;
+  const t = (coefficient * Math.sqrt(df)) / Math.sqrt(1 - coefficient * coefficient);
+  const z = (Math.abs(t) * (1 - 1 / (4 * df))) / Math.sqrt(1 + (t * t) / (2 * df));
+  return Math.min(1, Math.max(0, 2 * (1 - 0.5 * (1 + erf(z / Math.SQRT2)))));
 }
 
 function weeklyBreachCount(points: MetricPoint[], key: string, asOf: string, predicate: (value: number) => boolean): { weeks: number; samples: string[] } {
@@ -352,8 +455,11 @@ function buildInitiatives(warehouse: string, pains: PainPoint[], relationships: 
       evidence: [...pain.evidence.slice(0, 3), ...(supportingRelationship ? [supportingRelationship.narrative] : [])],
     } satisfies Initiative];
   });
-  const fallbacks = ["forecast", "productivity"].filter((key) => !selected.some((item) => item.id.includes(`-${key}-`))).map((key) => ({ ...templates[key], id: `${warehouse}-${key}-initiative`, warehouse, confidence: "medium" as const, priorityScore: 55, linkedPainIds: [], evidence: ["Baseline initiative digunakan karena recurrent pain evidence belum mencapai threshold."] } satisfies Initiative));
-  return [...selected, ...fallbacks].sort((a, b) => b.priorityScore - a.priorityScore).slice(0, 4);
+  const fallbacks = ["forecast", "productivity"].filter((key) => !selected.some((item) => item.id.includes(`-${key}-`))).map((key) => ({ ...templates[key], id: `${warehouse}-${key}-initiative`, warehouse, confidence: "low" as const, priorityScore: 0, linkedPainIds: [], evidence: ["Baseline initiative; tidak tertaut ke pain point mana pun karena evidence berulang belum mencapai threshold."] } satisfies Initiative));
+  // Evidence-linked initiatives are ranked and filled first. Fallbacks only ever
+  // occupy leftover slots: sorting them into one pool let a hardcoded score of 55
+  // push out a real, evidence-backed initiative that had scored lower.
+  return [...selected.sort((a, b) => b.priorityScore - a.priorityScore), ...fallbacks].slice(0, 4);
 }
 
 function driverSignals(kpis: MetricReading[]): DriverSignal[] {
@@ -461,33 +567,88 @@ function pivotMetrics(points: MetricPoint[], current: Window, previous: Window, 
   }).sort((a, b) => a.division.localeCompare(b.division) || a.role.localeCompare(b.role) || a.metric.localeCompare(b.metric));
 }
 
+/**
+ * Benchmarks every warehouse on one shared cut-off and one shared KPI basket.
+ *
+ * Two things used to make this table misleading. It ran its own four-metric score,
+ * so a warehouse could rank on a number that disagreed with its own cockpit gauge;
+ * and each warehouse resolved its own latest date, so the "common cut-off" the
+ * README promised was not enforced. It now takes the earliest of the warehouses'
+ * operational dates, so nobody is compared against a fresher week than the rest.
+ */
 function warehouseComparison(dataset: OperationalDataset, period: Period, requestedAsOf?: string): WarehouseComparisonRow[] {
-  return ["PGS", "SRG", "BIT", "STR"].map((warehouse) => {
+  const resolved = PRIORITY_WAREHOUSES.map((warehouse) => {
     const points = dataset.points.filter((point) => point.warehouse === warehouse);
     const availableDates = [...new Set(points.filter((point) => point.quality === "valid").map((point) => point.date))].sort();
-    const eligibleDates = availableDates.filter((date) => !requestedAsOf || date <= requestedAsOf);
-    const latest = latestOperationalDate(points, eligibleDates);
-    if (!latest) return { warehouse, healthScore: 0, forecastAccuracy: null, productivity: null, fulfillment: null, cancelRate: null, dataConfidence: 0 };
-    const { current } = windows(latest, period);
-    const metrics = ["forecast_accuracy", "productivity_attainment", "fulfillment_rate", "cancel_rate"].map((key) => reading(points, key, current, current));
-    const [forecast, productivity, fulfillment, cancel] = metrics;
-    const score = Math.round(metrics.filter((item) => item.value !== null).reduce((sum, item) => sum + scoreMetric(item.key, item.value), 0) / Math.max(1, metrics.filter((item) => item.value !== null).length));
-    const dataConfidence = Math.round(metrics.reduce((sum, item) => sum + item.coverage, 0) / metrics.length * 100);
-    return { warehouse, healthScore: score, forecastAccuracy: forecast.value, productivity: productivity.value, fulfillment: fulfillment.value, cancelRate: cancel.value, dataConfidence };
+    const eligible = availableDates.filter((date) => !requestedAsOf || date <= requestedAsOf);
+    return { warehouse, points, latest: latestOperationalDate(points, eligible) };
+  });
+
+  const sharedAsOf = resolved.map((item) => item.latest).filter((date): date is string => Boolean(date)).sort()[0] ?? null;
+  // A pillar counts as comparable only when at least one warehouse reports it,
+  // so a metric nobody tracks does not drag every row down.
+  const maxPillars = Math.max(1, ...resolved.map((item) => {
+    if (!sharedAsOf || !item.latest) return 0;
+    const { current, previous } = windows(sharedAsOf, period);
+    return KPI_KEYS.map((key) => reading(item.points, key, current, previous)).filter((kpi) => kpi.value !== null).length;
+  }));
+
+  return resolved.map(({ warehouse, points, latest }) => {
+    if (!sharedAsOf || !latest) {
+      return { warehouse, healthScore: 0, status: "watch" as const, asOf: null, forecastAccuracy: null, productivity: null, fulfillment: null, demandFillRate: null, cancelRate: null, dataConfidence: 0, pillarsAvailable: 0, pillarsTotal: KPI_KEYS.length, comparable: false };
+    }
+    const { current, previous } = windows(sharedAsOf, period);
+    const kpis = KPI_KEYS.map((key) => reading(points, key, current, previous));
+    const health = healthFrom(kpis);
+    const pick = (key: string) => kpis.find((item) => item.key === key)?.value ?? null;
+    return {
+      warehouse,
+      healthScore: health.score,
+      status: health.status,
+      asOf: sharedAsOf,
+      forecastAccuracy: pick("forecast_accuracy"),
+      productivity: pick("productivity_attainment"),
+      fulfillment: pick("fulfillment_rate"),
+      demandFillRate: pick("demand_fill_rate"),
+      cancelRate: pick("cancel_rate"),
+      dataConfidence: Math.round((kpis.reduce((sum, item) => sum + item.coverage, 0) / kpis.length) * 100),
+      pillarsAvailable: health.pillarsAvailable,
+      pillarsTotal: KPI_KEYS.length,
+      comparable: health.pillarsAvailable >= maxPillars,
+    };
   });
 }
 
+/**
+ * Zonal occupancy, with two guards the raw sheet needs.
+ *
+ * Every zone in every warehouse reported 0 on 2026-08-10 — a snapshot that did not
+ * run, not an empty warehouse — so zero readings are dropped rather than averaged
+ * in. And SRG and STR report an identical actual for Ambient and Chiller on every
+ * date, which then gets divided by two different maximums to produce two different
+ * utilizations from one number. At most one of those can be right, so both are
+ * flagged instead of being drawn as fact.
+ */
 function capacityZones(points: MetricPoint[], current: Window): CapacityZone[] {
-  return (["Ambient", "Chiller", "Frozen"] as const).map((zone) => {
+  const zones = (["Ambient", "Chiller", "Frozen"] as const).map((zone) => {
     const suffix = normalizeLabel(zone);
-    const actualPoints = points.filter((point) => normalizeLabel(point.metric) === `inventory actual max by qty ${suffix}`);
-    const maximumPoints = points.filter((point) => normalizeLabel(point.metric) === `inventory capacity max by qty ${suffix}`);
+    const actualPoints = points.filter((point) => normalizeLabel(point.metric) === `inventory actual max by qty ${suffix}` && point.value !== 0);
+    const maximumPoints = points.filter((point) => normalizeLabel(point.metric) === `inventory capacity max by qty ${suffix}` && point.value !== 0);
     const actual = aggregateRaw(actualPoints, current, "latest", "qty").value;
     const maximum = aggregateRaw(maximumPoints, current, "latest", "qty").value;
-    const utilization = actual !== null && maximum !== null && maximum > 0 ? actual / maximum * 100 : null;
-    const status = utilization === null ? "unavailable" : utilization >= 92 ? "critical" : utilization >= 85 ? "watch" : "controlled";
-    return { zone, actual, maximum, utilization, status };
+    const utilization = actual !== null && maximum !== null && maximum > 0 ? (actual / maximum) * 100 : null;
+    const status: CapacityZone["status"] = utilization === null ? "unavailable" : utilization >= 92 ? "critical" : utilization >= 85 ? "watch" : "controlled";
+    return { zone, actual, maximum, utilization, status, note: null as string | null };
   });
+
+  for (const zone of zones) {
+    if (zone.actual === null) continue;
+    const twins = zones.filter((other) => other.zone !== zone.zone && other.actual === zone.actual);
+    if (twins.length) {
+      zone.note = `Actual identik dengan ${twins.map((item) => item.zone).join(" dan ")}; salah satu pemetaan zona di sumber hampir pasti keliru. Jangan pakai utilisasi ini untuk keputusan kapasitas sebelum dikonfirmasi.`;
+    }
+  }
+  return zones;
 }
 
 function dailyMetric(points: MetricPoint[], key: string, date: string, mode: AggregationMode = "sum"): number | null {
@@ -584,39 +745,74 @@ function pearson(pairs: Array<[number, number]>): number | null {
   return numerator / (denominatorX * denominatorY);
 }
 
-function relationshipSignals(points: MetricPoint[], asOf: string): RelationshipSignal[] {
+/**
+ * Guarded association signals.
+ *
+ * Three corrections over the first version. Confidence now comes from the p-value
+ * rather than the sample size alone — an r of 0.02 over 40 days was previously
+ * badged "high confidence" when it is indistinguishable from noise. A Bonferroni
+ * threshold covers the whole hypothesis set, because running nine hypotheses across
+ * four warehouses at alpha 0.05 is expected to manufacture false positives. And
+ * pairs that share an input are named as such: picker productivity is literally
+ * volume divided by mandays, so correlating it against mandays variance measures
+ * the formula, not the operation.
+ */
+function relationshipSignals(points: MetricPoint[], asOf: string, skipDates: Set<string>): RelationshipSignal[] {
   const definitions = [
-    { id: "forecast-productivity", driverKey: "forecast_error", driverLabel: "Forecast error", outcomeKey: "productivity_attainment", outcomeLabel: "Picker productivity", driverDomain: "Planning", outcomeDomain: "Outbound", lagDays: 0, expectedSign: -1, decision: "Gunakan flex labor saat forecast error bergerak bersama productivity dilution." },
-    { id: "mandays-productivity", driverKey: "mandays_variance", driverLabel: "Mandays variance", outcomeKey: "productivity_attainment", outcomeLabel: "Picker productivity", driverDomain: "Personalia", outcomeDomain: "Outbound", lagDays: 0, expectedSign: -1, decision: "Pisahkan excess mandays dari process loss sebelum mengubah budget." },
-    { id: "attendance-sla", driverKey: "attendance_all", driverLabel: "Attendance", outcomeKey: "sla_checker_inbound", outcomeLabel: "Inbound SLA", driverDomain: "Personalia", outcomeDomain: "Inbound", lagDays: 0, expectedSign: 1, decision: "Gunakan attendance sebagai early warning SLA, bukan alasan tunggal menambah MP." },
-    { id: "schedule-productivity", driverKey: "schedule_accuracy", driverLabel: "Schedule accuracy", outcomeKey: "productivity_attainment", outcomeLabel: "Picker productivity", driverDomain: "Personalia", outcomeDomain: "Outbound", lagDays: 0, expectedSign: 1, decision: "Koreksi mismatch schedule pada hari dengan productivity loss yang berulang." },
-    { id: "dcc-pickface", driverKey: "dcc_accuracy", driverLabel: "DCC accuracy", outcomeKey: "pick_to_pf", outcomeLabel: "Pick to PF", driverDomain: "Inventory", outcomeDomain: "Outbound", lagDays: 1, expectedSign: 1, decision: "Prioritaskan SLOC correction bila accuracy hari ini terkait pickface availability besok." },
-    { id: "replenish-pickface", driverKey: "replenishment_completion", driverLabel: "Replenishment completion", outcomeKey: "pick_to_pf", outcomeLabel: "Pick to PF", driverDomain: "Inventory", outcomeDomain: "Outbound", lagDays: 1, expectedSign: 1, decision: "Sinkronkan replenishment cut-off dengan kebutuhan picking H+1." },
-    { id: "troubleshoot-fr", driverKey: "troubleshoot_fr", driverLabel: "Troubleshoot FR", outcomeKey: "fulfillment_rate", outcomeLabel: "Warehouse FR", driverDomain: "Inventory", outcomeDomain: "Service", lagDays: 0, expectedSign: 1, decision: "Alokasikan recovery berdasarkan contribution-to-FR, aging, dan value-at-risk." },
-    { id: "cancel-productivity", driverKey: "cancel_rate", driverLabel: "Cancel rate", outcomeKey: "productivity_attainment", outcomeLabel: "Picker productivity", driverDomain: "Planning", outcomeDomain: "Outbound", lagDays: 0, expectedSign: -1, decision: "Wajibkan capacity proof bila cancel naik tetapi productivity tidak ikut pulih." },
-    { id: "capacity-productivity", driverKey: "capacity_pressure", driverLabel: "Capacity pressure >85%", outcomeKey: "productivity_attainment", outcomeLabel: "Picker productivity", driverDomain: "Capacity", outcomeDomain: "Outbound", lagDays: 0, expectedSign: -1, decision: "Aktifkan overflow playbook sebelum congestion menekan output per manday." },
+    { id: "forecast-productivity", driverKey: "forecast_error", driverLabel: "Forecast error", outcomeKey: "productivity_attainment", outcomeLabel: "Picker productivity", driverDomain: "Planning", outcomeDomain: "Outbound", lagDays: 0, expectedSign: -1, sharedTerm: "Outbound qty requested (ada di kedua sisi)", decision: "Gunakan flex labor saat forecast error bergerak bersama productivity dilution." },
+    { id: "mandays-productivity", driverKey: "mandays_variance", driverLabel: "Mandays variance", outcomeKey: "productivity_attainment", outcomeLabel: "Picker productivity", driverDomain: "Personalia", outcomeDomain: "Outbound", lagDays: 0, expectedSign: -1, sharedTerm: "Actual mandays picker (penyebut produktivitas, pembilang variance)", decision: "Pisahkan excess mandays dari process loss sebelum mengubah budget." },
+    { id: "attendance-sla", driverKey: "attendance_all", driverLabel: "Attendance", outcomeKey: "sla_checker_inbound", outcomeLabel: "Inbound SLA", driverDomain: "Personalia", outcomeDomain: "Inbound", lagDays: 0, expectedSign: 1, sharedTerm: null, decision: "Gunakan attendance sebagai early warning SLA, bukan alasan tunggal menambah MP." },
+    { id: "schedule-productivity", driverKey: "schedule_accuracy", driverLabel: "Schedule accuracy", outcomeKey: "productivity_attainment", outcomeLabel: "Picker productivity", driverDomain: "Personalia", outcomeDomain: "Outbound", lagDays: 0, expectedSign: 1, sharedTerm: null, decision: "Koreksi mismatch schedule pada hari dengan productivity loss yang berulang." },
+    { id: "dcc-pickface", driverKey: "dcc_accuracy", driverLabel: "DCC accuracy", outcomeKey: "pick_to_pf", outcomeLabel: "Pick to PF", driverDomain: "Inventory", outcomeDomain: "Outbound", lagDays: 1, expectedSign: 1, sharedTerm: null, decision: "Prioritaskan SLOC correction bila accuracy hari ini terkait pickface availability besok." },
+    { id: "replenish-pickface", driverKey: "replenishment_completion", driverLabel: "Replenishment completion", outcomeKey: "pick_to_pf", outcomeLabel: "Pick to PF", driverDomain: "Inventory", outcomeDomain: "Outbound", lagDays: 1, expectedSign: 1, sharedTerm: null, decision: "Sinkronkan replenishment cut-off dengan kebutuhan picking H+1." },
+    { id: "troubleshoot-fr", driverKey: "troubleshoot_fr", driverLabel: "Troubleshoot FR", outcomeKey: "fulfillment_rate", outcomeLabel: "Warehouse FR", driverDomain: "Inventory", outcomeDomain: "Service", lagDays: 0, expectedSign: 1, sharedTerm: null, decision: "Alokasikan recovery berdasarkan contribution-to-FR, aging, dan value-at-risk." },
+    { id: "cancel-productivity", driverKey: "cancel_rate", driverLabel: "Cancel rate", outcomeKey: "productivity_attainment", outcomeLabel: "Picker productivity", driverDomain: "Planning", outcomeDomain: "Outbound", lagDays: 0, expectedSign: -1, sharedTerm: "Outbound qty requested (penyebut cancel rate, pembilang produktivitas)", decision: "Wajibkan capacity proof bila cancel naik tetapi productivity tidak ikut pulih." },
+    { id: "capacity-productivity", driverKey: "capacity_pressure", driverLabel: "Capacity pressure >85%", outcomeKey: "productivity_attainment", outcomeLabel: "Picker productivity", driverDomain: "Capacity", outcomeDomain: "Outbound", lagDays: 0, expectedSign: -1, sharedTerm: null, decision: "Aktifkan overflow playbook sebelum congestion menekan output per manday." },
   ];
-  const dates = Array.from({ length: 84 }, (_, index) => shiftIso(asOf, index - 83));
+  // Nine hypotheses x four warehouses is the family the correction has to cover.
+  const bonferroni = 0.05 / (definitions.length * PRIORITY_WAREHOUSES.length);
+  const dates = Array.from({ length: 84 }, (_, index) => shiftIso(asOf, index - 83)).filter((date) => !skipDates.has(date));
+
   return definitions.map((definition) => {
     const pairs: Array<[number, number]> = [];
     for (const date of dates) {
+      const outcomeDate = shiftIso(date, definition.lagDays);
+      if (skipDates.has(outcomeDate)) continue;
       const driver = dailyDerived(points, definition.driverKey, date);
-      const outcome = dailyDerived(points, definition.outcomeKey, shiftIso(date, definition.lagDays));
+      const outcome = dailyDerived(points, definition.outcomeKey, outcomeDate);
       if (driver !== null && outcome !== null && Number.isFinite(driver) && Number.isFinite(outcome)) pairs.push([driver, outcome]);
     }
     const coefficient = pearson(pairs);
     const absolute = Math.abs(coefficient ?? 0);
+    const pValue = coefficient === null ? null : correlationPValue(coefficient, pairs.length);
+    const survivesMultiplicity = pValue !== null && pValue < bonferroni;
     const strength: RelationshipSignal["strength"] = coefficient === null ? "insufficient" : absolute >= 0.55 ? "strong" : absolute >= 0.3 ? "moderate" : "weak";
-    const confidence: RelationshipSignal["confidence"] = pairs.length >= 35 ? "high" : pairs.length >= 18 ? "medium" : "low";
-    const alignment: RelationshipSignal["alignment"] = coefficient === null || absolute < 0.2 ? "inconclusive" : Math.sign(coefficient) === definition.expectedSign ? "supports" : "contradicts";
-    const coefficientText = coefficient === null ? "belum cukup data" : `r=${coefficient.toFixed(2)} dari ${pairs.length} hari`;
+    const confidence: RelationshipSignal["confidence"] = pValue === null || pValue >= 0.05 || pairs.length < 18
+      ? "low"
+      : survivesMultiplicity && pairs.length >= 35
+        ? "high"
+        : "medium";
+    const alignment: RelationshipSignal["alignment"] = coefficient === null || pValue === null || pValue >= 0.05 || absolute < 0.2
+      ? "inconclusive"
+      : Math.sign(coefficient) === definition.expectedSign ? "supports" : "contradicts";
+
+    const stat = coefficient === null
+      ? "belum cukup data"
+      : `r=${coefficient.toFixed(2)}, n=${pairs.length}, p=${pValue === null ? "n/a" : pValue < 0.0001 ? "<0,0001" : pValue.toFixed(4)}`;
+    const multiplicityNote = coefficient === null ? "" : survivesMultiplicity ? " Bertahan setelah koreksi multiplisitas." : " Tidak bertahan setelah koreksi multiplisitas—perlakukan sebagai petunjuk, bukan bukti.";
+    const sharedNote = definition.sharedTerm ? ` Peringatan: kedua sisi berbagi ${definition.sharedTerm}, sehingga sebagian korelasi ini dijamin oleh rumus dan bukan temuan operasional.` : "";
     const narrative = alignment === "supports"
-      ? `${definition.driverLabel} bergerak sesuai arah hubungan operasional yang diharapkan terhadap ${definition.outcomeLabel} (${coefficientText}).`
+      ? `${definition.driverLabel} bergerak sesuai arah hubungan operasional yang diharapkan terhadap ${definition.outcomeLabel} (${stat}).${multiplicityNote}${sharedNote}`
       : alignment === "contradicts"
-        ? `Pola ${definition.driverLabel} terhadap ${definition.outcomeLabel} tidak mengikuti hipotesis awal (${coefficientText}); cek segmentasi shift, weekday, dan volume.`
-        : `Hubungan ${definition.driverLabel} dan ${definition.outcomeLabel} belum stabil (${coefficientText}); jangan gunakan sebagai bukti kausal.`;
-    return { ...definition, coefficient, sampleSize: pairs.length, strength, confidence, alignment, narrative } satisfies RelationshipSignal;
-  }).sort((a, b) => Math.abs(b.coefficient ?? 0) * Math.min(1, b.sampleSize / 28) - Math.abs(a.coefficient ?? 0) * Math.min(1, a.sampleSize / 28));
+        ? `Pola ${definition.driverLabel} terhadap ${definition.outcomeLabel} berlawanan dengan hipotesis awal (${stat}); cek segmentasi shift, weekday, dan volume—atau hipotesisnya yang perlu dikoreksi.${multiplicityNote}${sharedNote}`
+        : `Hubungan ${definition.driverLabel} dan ${definition.outcomeLabel} tidak dapat dibedakan dari noise (${stat}); jangan gunakan sebagai dasar keputusan.${sharedNote}`;
+
+    return { ...definition, coefficient, pValue, survivesMultiplicity, sampleSize: pairs.length, strength, confidence, alignment, narrative } satisfies RelationshipSignal;
+  }).sort((a, b) => {
+    // Rank by evidential weight: confirmed signals first, confounded ones last.
+    const weight = (item: RelationshipSignal) => (item.survivesMultiplicity ? 2 : item.alignment === "inconclusive" ? 0 : 1) - (item.sharedTerm ? 0.5 : 0);
+    return weight(b) - weight(a) || Math.abs(b.coefficient ?? 0) - Math.abs(a.coefficient ?? 0);
+  });
 }
 
 function riskMatrix(points: MetricPoint[], asOf: string): RiskMatrix {
@@ -669,17 +865,35 @@ function decisionInsights(
   const mandays = value("mandays_variance");
   const productivity = value("productivity_attainment");
   const sla = value("sla_checker_inbound");
+  const cancelRate = value("cancel_rate");
+  const cancelTarget = rules.cancel_rate.target ?? 2;
   if (mandays !== null && productivity !== null && sla !== null) {
-    if (mandays < -3 && productivity >= 100 && sla >= 98) {
+    if (mandays < -3 && productivity >= 100 && sla >= 98 && cancelRate !== null && cancelRate > cancelTarget) {
+      // The three "healthy" readings are all measured on workload that was thrown
+      // away. Cancelling demand lowers the mandays needed and raises output per
+      // manday at the same time, which is exactly the pattern that would otherwise
+      // be read as efficiency — so the budget recommendation is withheld.
+      add({
+        id: "labor-saving-confounded-by-cancel",
+        priority: cancelRate > 5 ? "critical" : "high",
+        domain: "Labor economics",
+        title: "Penghematan mandays tidak dapat dinilai selama cancel masih tinggi",
+        observation: `Actual mandays ${Math.abs(mandays).toFixed(1)}% di bawah budget dengan productivity ${pct(productivity)} dan SLA ${pct(sla)}, tetapi ${pct(cancelRate)} permintaan dibatalkan pada window yang sama.`,
+        implication: "Ketiga angka sehat itu diukur setelah sebagian beban kerja dihapus. Beban yang 'tidak membutuhkan' manday adalah beban yang dibuang, bukan beban yang diselesaikan lebih efisien.",
+        recommendedAction: `Turunkan cancel ke bawah ${cancelTarget}% lebih dulu, lalu ukur ulang mandays pada beban kerja penuh. Jangan mengubah baseline budget berdasarkan window ini.`,
+        evidence: [`Mandays variance ${pct(mandays)}`, `Cancel rate ${pct(cancelRate)} (target ${cancelTarget}%)`, `Demand fill rate ${pct(value("demand_fill_rate"))}`],
+        confidence: confidenceFor("mandays_variance", "cancel_rate", "productivity_attainment"),
+      });
+    } else if (mandays < -3 && productivity >= 100 && sla >= 98) {
       add({
         id: "labor-budget-opportunity",
         priority: "high",
         domain: "Labor economics",
         title: "Budget mandays berpotensi lebih besar dari kebutuhan aktual",
-        observation: `Actual mandays ${Math.abs(mandays).toFixed(1)}% di bawah budget, sementara productivity ${pct(productivity)} dan inbound SLA ${pct(sla)} tetap sehat.`,
-        implication: "Efisiensi tidak sedang dibayar dengan penurunan output atau service; baseline budget layak diuji ulang per weekday dan volume band.",
-        recommendedAction: "Backtest 8 minggu dan turunkan budget hanya pada volume band yang konsisten, dengan SLA 98% dan productivity 100% sebagai stop-loss.",
-        evidence: [`Mandays variance ${pct(mandays)}`, `Productivity ${pct(productivity)}`, `Inbound SLA ${pct(sla)}`],
+        observation: `Actual mandays ${Math.abs(mandays).toFixed(1)}% di bawah budget, sementara productivity ${pct(productivity)}, inbound SLA ${pct(sla)}, dan cancel ${pct(cancelRate)} sama-sama sehat.`,
+        implication: "Efisiensi tidak sedang dibayar dengan penurunan output, service, atau permintaan yang dibuang; baseline budget layak diuji ulang per weekday dan volume band.",
+        recommendedAction: "Backtest 8 minggu dan turunkan budget hanya pada volume band yang konsisten, dengan SLA 98%, productivity 100%, dan cancel di bawah target sebagai stop-loss.",
+        evidence: [`Mandays variance ${pct(mandays)}`, `Productivity ${pct(productivity)}`, `Inbound SLA ${pct(sla)}`, `Cancel rate ${pct(cancelRate)}`],
         confidence: confidenceFor("mandays_variance", "productivity_attainment", "sla_checker_inbound"),
       });
     } else if (mandays < -3 && (productivity < 92 || sla < 98)) {
@@ -823,19 +1037,35 @@ export function buildAnalysis(
   const { current, previous } = windows(asOf, period);
   const division = options.division && options.division !== "All" ? options.division : "All";
   const role = options.role && options.role !== "All" ? options.role : "All";
-  const keys = ["forecast_accuracy", "productivity_attainment", "fulfillment_rate", "sla_checker_inbound", "mandays_variance", "capacity_utilization", "cancel_rate", "troubleshoot_fr", "dcc_accuracy", "pick_to_pf"];
-  const kpis = keys.map((key) => reading(warehousePoints, key, current, previous));
-  const weightedKeys = ["forecast_accuracy", "productivity_attainment", "fulfillment_rate", "sla_checker_inbound", "capacity_utilization", "cancel_rate", "dcc_accuracy"];
-  const scored = weightedKeys.map((key) => kpis.find((item) => item.key === key)).filter((item): item is MetricReading => Boolean(item && item.value !== null));
-  const healthScore = scored.length ? Math.round(scored.reduce((sum, item) => sum + scoreMetric(item.key, item.value), 0) / scored.length) : 50;
+  const kpis = KPI_KEYS.map((key) => reading(warehousePoints, key, current, previous));
+  const health = healthFrom(kpis);
   const confidence = Math.round(kpis.reduce((sum, item) => sum + item.coverage, 0) / kpis.length * 100);
-  const status = scored.length < 3 ? "watch" : healthScore < 65 ? "critical" : healthScore < 82 ? "watch" : "controlled";
   const weakest = [...kpis].filter((item) => item.value !== null).sort((a, b) => scoreMetric(a.key, a.value) - scoreMetric(b.key, b.value)).slice(0, 2);
   const pains = painAnalysis(warehousePoints, dataset.highlights, warehouse, asOf);
+  const noOpsDates = noOperationDates(warehousePoints);
+  const noOpsInWindow = [...noOpsDates].filter((date) => date >= shiftIso(asOf, -83) && date <= asOf);
   const dataWarnings: string[] = [];
   if (dataset.diagnostics.formulaErrors > 0) dataWarnings.push(`${dataset.diagnostics.formulaErrors.toLocaleString("id-ID")} sel sumber mengandung formula error dan dikeluarkan dari perhitungan.`);
   if (confidence < 75) dataWarnings.push(`Coverage KPI periode ini ${confidence}%; hasil ber-confidence rendah perlu divalidasi.`);
+  if (health.pillarsAvailable < health.pillarsTotal) dataWarnings.push(`${health.pillarsTotal - health.pillarsAvailable} dari ${health.pillarsTotal} pilar KPI tidak memiliki data pada window ini; skor kesehatan dihitung atas basket yang lebih kecil dan tidak setara dengan warehouse yang datanya lengkap.`);
+  if (noOpsInWindow.length > 0) dataWarnings.push(`${noOpsInWindow.length} hari tanpa operasi (volume outbound nol) dikeluarkan dari analisis hubungan: ${noOpsInWindow.slice(0, 5).join(", ")}${noOpsInWindow.length > 5 ? ", …" : ""}.`);
   if (dataset.diagnostics.futureCells > 0) dataWarnings.push("Tanggal masa depan diperlakukan sebagai plan, bukan actual performance.");
+
+  // A metric that used to be reported and then stopped is an operational reporting
+  // failure; a metric that was never tracked is a scope decision. Both used to
+  // render as an identical blank cell, so a regression could pass unnoticed.
+  const historical = new Set(warehousePoints.filter((point) => point.quality === "valid" && point.value !== null).flatMap((point) => metricAliasKeys(point.metric)));
+  const stalled = kpis.filter((kpi) => kpi.value === null).filter((kpi) => derived(warehousePoints, kpi.key, { start: "0000-01-01", end: asOf, days: 1 }).value !== null || historical.has(kpi.key));
+  if (stalled.length) dataWarnings.push(`Metrik berikut pernah dilaporkan tetapi kosong pada window aktif—kemungkinan kemunduran pelaporan, bukan metrik yang memang tidak dilacak: ${stalled.map((item) => item.label).join(", ")}.`);
+
+  // The source computes its own forecast accuracy. Comparing it against the engine's
+  // derivation turns a silent divergence into a visible warning.
+  for (const [derivedKey, sourceKey, label] of [["forecast_accuracy", "source_outbound_forecast_accuracy", "Forecast accuracy outbound"], ["inbound_forecast_accuracy", "source_inbound_forecast_accuracy", "Forecast accuracy inbound"]] as const) {
+    const ours = normalizePercent(derivedKey, derived(warehousePoints, derivedKey, current).value);
+    const theirs = normalizePercent(sourceKey, metricValue(warehousePoints, sourceKey, current).value);
+    if (ours === null || theirs === null) continue;
+    if (Math.abs(ours - theirs) > 2) dataWarnings.push(`${label}: hasil mesin ${ours.toFixed(1)}% berbeda ${Math.abs(ours - theirs).toFixed(1)} pp dari kolom hitungan sumber (${theirs.toFixed(1)}%). Rekonsiliasi definisi diperlukan.`);
+  }
   if (!warehousePoints.some((point) => normalizeLabel(point.metric).includes("forecast") && normalizeLabel(point.metric).includes("relabel"))) dataWarnings.push("Forecast pcs relabel tidak tersedia; productivity relabel tidak boleh dinilai sebagai forecast attainment.");
   if (!warehousePoints.some((point) => normalizeLabel(point.role).includes("troubleshoot") && normalizeLabel(point.metric).includes("manday"))) dataWarnings.push("Mandays troubleshooter tidak tersedia; FR troubleshoot dapat dimonitor, tetapi dampak manpower belum dapat dibuktikan.");
 
@@ -850,19 +1080,27 @@ export function buildAnalysis(
   for (const item of divisions) rolesByDivision[item] = [...new Set(warehousePoints.filter((point) => canonicalDivision(point.division) === item).map((point) => point.role).filter(Boolean))].sort();
   const modules = functionalModules(warehousePoints, current, previous);
   const zones = capacityZones(warehousePoints, current);
-  const relationships = relationshipSignals(warehousePoints, asOf);
-  const activeTrendKeys = division === "All" ? ["forecast_accuracy", "productivity_attainment", "fulfillment_rate", "capacity_utilization", "cancel_rate", "dcc_accuracy"]
+  for (const zone of zones) if (zone.note) dataWarnings.push(`Zona ${zone.zone}: ${zone.note}`);
+  const relationships = relationshipSignals(warehousePoints, asOf, noOpsDates);
+  const activeTrendKeys = division === "All" ? ["forecast_accuracy", "productivity_attainment", "demand_fill_rate", "capacity_utilization", "cancel_rate", "dcc_accuracy"]
     : MODULES.find((module) => module.division === division)?.keys.slice(0, 6) ?? ["forecast_accuracy", "productivity_attainment"];
 
   return {
     context: { warehouse, period, division, role, asOf, rangeStart: current.start, rangeEnd: current.end, sourceMode: dataset.sourceMode, sourceName: dataset.sourceName, fetchedAt: dataset.fetchedAt },
     health: {
-      score: healthScore,
-      status,
-      headline: scored.length < 3 ? "Data window belum cukup" : status === "critical" ? "Intervensi lintas fungsi diperlukan" : status === "watch" ? "Operasi belum stabil" : "Operasi dalam kendali",
+      score: health.score,
+      status: health.status,
+      headline: health.pillarsAvailable < 3
+        ? "Data window belum cukup"
+        : health.status === "critical" ? "Intervensi lintas fungsi diperlukan"
+        : health.criticalKpis.length ? `Skor agregat sehat, tetapi ${health.criticalKpis.length} KPI menembus guardrail`
+        : health.status === "watch" ? "Operasi belum stabil" : "Operasi dalam kendali",
       narrative: weakest.length ? `${weakest.map((item) => item.label).join(" dan ")} menjadi pressure point utama. Baca bersama volume, mandays, SLA, dan capacity—jangan mengoptimalkan satu KPI secara terpisah.` : "Data belum cukup untuk menentukan pressure point; sistem tidak memberi status kritis tanpa evidence minimum.",
       confidence,
       dataWarnings,
+      criticalKpis: health.criticalKpis,
+      pillarsAvailable: health.pillarsAvailable,
+      pillarsTotal: health.pillarsTotal,
     },
     kpis,
     trends: activeTrendKeys.map((key) => dailyTrend(warehousePoints, key, asOf)),
@@ -885,4 +1123,4 @@ export function buildAnalysis(
   };
 }
 
-export const __test = { shiftIso, windows, normalizePercent, scoreMetric };
+export const __test = { shiftIso, windows, normalizePercent, scoreMetric, decayScore, healthFrom, noOperationDates, correlationPValue, KPI_KEYS };

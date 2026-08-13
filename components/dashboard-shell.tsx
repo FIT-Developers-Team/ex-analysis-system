@@ -118,7 +118,11 @@ function InsightCard({ insight, index }: { insight: DecisionInsight; index: numb
 }
 
 function ExecutiveCockpit({ data, openInitiatives }: { data: AnalysisPayload; openInitiatives: () => void }) {
-  const priority = data.kpis.filter((item) => ["forecast_accuracy", "productivity_attainment", "fulfillment_rate", "mandays_variance", "capacity_utilization", "cancel_rate"].includes(item.key));
+  // fulfillment_rate and demand_fill_rate sit side by side on purpose: the first is
+  // measured after cancellation and the second before it, and the gap between them
+  // is the share of demand that was dropped rather than served.
+  const priority = data.kpis.filter((item) => ["forecast_accuracy", "productivity_attainment", "fulfillment_rate", "demand_fill_rate", "cancel_rate", "mandays_variance", "capacity_utilization"].includes(item.key));
+  const breaching = data.kpis.filter((item) => data.health.criticalKpis.includes(item.key));
   return (
     <>
       <section className="intelligence-hero intelligence-hero--executive">
@@ -132,6 +136,16 @@ function ExecutiveCockpit({ data, openInitiatives }: { data: AnalysisPayload; op
       </section>
 
       <section className="kpi-strip">{priority.map((metric) => <KpiCard key={metric.key} metric={metric} />)}</section>
+
+      {breaching.length > 0 && (
+        <section className="panel guardrail-banner">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>{breaching.length} KPI menembus guardrail</strong>
+            <p>{breaching.map((item) => `${item.label} ${item.value === null ? "n/a" : `${item.value.toFixed(1)}%`} (target ${item.target}%)`).join(" · ")}. Selama masih ada breach, status tertinggi yang diizinkan adalah <em>watch</em>—skor agregat tidak boleh menutupinya.</p>
+          </div>
+        </section>
+      )}
 
       <section className="section-block">
         <SectionHeader eyebrow="Decision brief" title="What the operating review should decide next" description="Prioritas dibentuk dari trade-off volume, mandays, SLA, capacity, cancel, dan inventory control—not a single KPI breach." />
@@ -178,10 +192,10 @@ function ExecutiveCockpit({ data, openInitiatives }: { data: AnalysisPayload; op
       </section>
 
       <section className="panel comparison-panel">
-        <SectionHeader eyebrow="Network benchmark" title="PGS · SRG · BIT · STR on one cut-off" description="Period dan cut-off yang sama mencegah ranking bias akibat jendela waktu berbeda." />
+        <SectionHeader eyebrow="Network benchmark" title={`PGS · SRG · BIT · STR pada cut-off ${fmtDate(data.warehouseComparison.find((row) => row.asOf)?.asOf ?? data.context.asOf)}`} description="Skor dihitung fungsi yang sama dengan gauge cockpit, atas basket KPI dan tanggal yang sama. Baris bertanda ⚠ kekurangan pilar yang dilaporkan warehouse lain—peringkatnya tidak setara." />
         <div className="comparison-layout">
           <WarehouseComparisonChart rows={data.warehouseComparison} />
-          <div className="comparison-scoreboard">{[...data.warehouseComparison].sort((a, b) => b.healthScore - a.healthScore).map((row, index) => <div key={row.warehouse}><span>#{index + 1}</span><strong>{row.warehouse}</strong><b>{row.healthScore}</b><small>{row.dataConfidence}% coverage</small></div>)}</div>
+          <div className="comparison-scoreboard">{[...data.warehouseComparison].sort((a, b) => b.healthScore - a.healthScore).map((row, index) => <div key={row.warehouse}><span>#{index + 1}</span><strong>{row.warehouse}{row.comparable ? "" : " ⚠"}</strong><b>{row.healthScore}</b><small>{row.comparable ? `${row.dataConfidence}% coverage` : `${row.pillarsAvailable}/${row.pillarsTotal} pilar`}</small></div>)}</div>
         </div>
       </section>
     </>
@@ -219,7 +233,7 @@ function FlowIntelligence({ data }: { data: AnalysisPayload }) {
       <section className="panel chart-panel">
         <SectionHeader eyebrow="Zonal capacity" title="Ambient, chiller, and frozen operating envelope" description="Warning 85% dan critical 92%; nilai harian tidak diisi secara artifisial saat source kosong." />
         <CapacityHistoryChart points={data.capacityHistory} />
-        <div className="capacity-grid capacity-grid--attached">{data.capacityZones.map((zone) => <article className={`capacity-zone capacity-zone--${zone.status}`} key={zone.zone}><header><div><span>{zone.zone}</span><strong>{zone.utilization === null ? "—" : `${zone.utilization.toFixed(1)}%`}</strong></div><b>{zone.status}</b></header><div className="capacity-track"><i style={{ width: `${Math.min(100, zone.utilization ?? 0)}%` }} /></div><footer><span>Actual <b>{zone.actual?.toLocaleString("id-ID") ?? "—"}</b></span><span>Max <b>{zone.maximum?.toLocaleString("id-ID") ?? "—"}</b></span></footer></article>)}</div>
+        <div className="capacity-grid capacity-grid--attached">{data.capacityZones.map((zone) => <article className={`capacity-zone capacity-zone--${zone.status}`} key={zone.zone}><header><div><span>{zone.zone}</span><strong>{zone.utilization === null ? "—" : `${zone.utilization.toFixed(1)}%`}</strong></div><b>{zone.status}</b></header><div className="capacity-track"><i style={{ width: `${Math.min(100, zone.utilization ?? 0)}%` }} /></div><footer><span>Actual <b>{zone.actual?.toLocaleString("id-ID") ?? "—"}</b></span><span>Max <b>{zone.maximum?.toLocaleString("id-ID") ?? "—"}</b></span></footer>{zone.note && <p className="zone-note"><AlertTriangle size={13} />{zone.note}</p>}</article>)}</div>
       </section>
     </>
   );
@@ -237,7 +251,7 @@ function RelationshipLab({ data }: { data: AnalysisPayload }) {
         <div className="panel relationship-notice">
           <Info size={20} />
           <div><strong>How to use this page</strong><p>Mulai dari hubungan moderate/strong dengan sample memadai. Validasi lewat shift, weekday, volume band, dan floor observation sebelum membuat kebijakan.</p></div>
-          <div className="relationship-stats"><span><b>{data.relationshipSignals.filter((item) => item.strength === "strong").length}</b> strong</span><span><b>{data.relationshipSignals.filter((item) => item.alignment === "supports").length}</b> supports</span><span><b>{data.relationshipSignals.filter((item) => item.strength === "insufficient").length}</b> insufficient</span></div>
+          <div className="relationship-stats"><span><b>{data.relationshipSignals.filter((item) => item.survivesMultiplicity).length}</b> lolos koreksi</span><span><b>{data.relationshipSignals.filter((item) => item.sharedTerm).length}</b> confounded</span><span><b>{data.relationshipSignals.filter((item) => item.alignment === "inconclusive").length}</b> inconclusive</span></div>
         </div>
       </section>
 
@@ -246,7 +260,8 @@ function RelationshipLab({ data }: { data: AnalysisPayload }) {
           <article className={`relationship-card relationship-card--${signal.alignment}`} key={signal.id}>
             <header><span>{signal.driverDomain} → {signal.outcomeDomain}</span><b>{signal.coefficient === null ? "n/a" : `r ${signal.coefficient.toFixed(2)}`}</b></header>
             <h3>{signal.driverLabel} → {signal.outcomeLabel}</h3><p>{signal.narrative}</p>
-            <div><span>{signal.strength}</span><span>n {signal.sampleSize}</span><span>lag {signal.lagDays}d</span><span>{signal.confidence} confidence</span></div>
+            {signal.sharedTerm && <p className="relationship-confound"><AlertTriangle size={13} />Confounded: kedua sisi berbagi {signal.sharedTerm}.</p>}
+            <div><span>{signal.strength}</span><span>n {signal.sampleSize}</span><span>lag {signal.lagDays}d</span><span>p {signal.pValue === null ? "n/a" : signal.pValue < 0.0001 ? "<0,0001" : signal.pValue.toFixed(4)}</span><span>{signal.confidence} confidence</span></div>
             <footer><ArrowRight size={14} /><span>{signal.decision}</span></footer>
           </article>
         ))}

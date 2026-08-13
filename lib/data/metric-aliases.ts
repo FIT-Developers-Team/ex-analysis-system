@@ -3,7 +3,7 @@ export const METRIC_ALIASES: Record<string, string[]> = {
   forecast_weekly_inbound: ["forecast weekly inbound"],
   actual_inbound: ["qty actual inbound"],
   incoming_inbound: ["qty incoming inbound"],
-  inbound_utilization: ["inbound utilization"],
+  inbound_utilization: ["inbound utilization", "inbound utilization %"],
   inbound_capacity: ["max inbound capacity"],
   sla_checker_inbound: ["sla checker inbound achievement"],
   budget_checker_mandays: ["budget mandays checker inbound"],
@@ -14,7 +14,7 @@ export const METRIC_ALIASES: Record<string, string[]> = {
   forecast_weekly_putaway: ["forecast weekly putaway"],
   putaway_actual: ["putaway actual"],
   putaway_done: ["putaway done"],
-  putaway_utilization: ["putaway utilization"],
+  putaway_utilization: ["putaway utilization", "putaway utilization %"],
   putaway_productivity: ["putaway productivity"],
   putaway_productivity_target: ["putaway productivity target"],
   budget_putaway_mandays: ["budget mandays putaway"],
@@ -23,7 +23,7 @@ export const METRIC_ALIASES: Record<string, string[]> = {
   inventory_actual: ["inventory actual ending (by qty)", "inventory actual max (by qty)"],
   inventory_capacity: ["inventory capacity max (by qty)"],
   inventory_forecast: ["inventory capacity forecast (by qty)"],
-  inventory_utilization_max: ["inventory utilization actual (max.) vs max %", "utilization actual vs max %"],
+  inventory_utilization_max: ["inventory utilization actual (max.) vs max %", "inventory utilization actual (max.) vs max. capacity %"],
   inventory_accuracy_qty: ["inventory accuracy by qty (dcc regular)"],
   inventory_accuracy_sloc: ["inventory accuracy by sloc (dcc regular)"],
   sloc_qty_accuracy: ["sloc x qty accuracy (dcc regular)"],
@@ -43,7 +43,7 @@ export const METRIC_ALIASES: Record<string, string[]> = {
   outbound_actual_hub: ["outbound qty actual (hub received)"],
   outbound_unfulfilled: ["outbound qty unfulfilled"],
   outbound_capacity: ["max so / outbound capacity"],
-  outbound_utilization: ["outbound utilization rate"],
+  outbound_utilization: ["outbound utilization rate", "outbound utilization rate %"],
   picker_productivity: ["picker actual productivity collective"],
   picker_productivity_target: ["picker productivity target"],
   budget_picker_mandays: ["budget mandays picker"],
@@ -81,6 +81,10 @@ export const METRIC_ALIASES: Record<string, string[]> = {
   truck_dedicated: ["truck dedicated"],
   total_wastage: ["total wastage wh", "total wastage (wh + ib to bad)"],
   wastage_handling: ["wastage due to handling", "wastage handling wh"],
+  // Source-computed equivalents, used only to reconcile the engine's own
+  // derivations against the spreadsheet. Never rendered as a KPI.
+  source_inbound_forecast_accuracy: ["inbound forecast weekly accuracy %"],
+  source_outbound_forecast_accuracy: ["outbound forecast weekly accuracy %"],
 };
 
 const normalizedCache = new Map<string, string>();
