@@ -77,9 +77,9 @@ The app also builds `.cache/operational-dataset.json.gz` automatically when the 
 4. Set `GOOGLE_SERVICE_ACCOUNT_EMAIL` and `GOOGLE_PRIVATE_KEY` from `.env.example`.
 5. Do not set `FIT_WORKBOOK_PATH` in production.
 
-The source adapter uses one `spreadsheets.values.batchGet` request for the four priority warehouse tabs plus `Highlight`, maps returned ranges back to their tab names, caches the normalized dataset for 30 seconds by default, and deduplicates concurrent loads. Transient HTTP 408/429/5xx failures are retried with bounded backoff and a 12-second timeout. If the live source still fails, NEXUS serves the last successful gzip snapshot and marks the UI as `fallback` or `stale` instead of silently presenting it as live.
+The source adapter uses one `spreadsheets.values.batchGet` request for the four priority warehouse tabs plus `Highlight`, maps returned ranges back to their tab names, caches the normalized dataset for 30 seconds by default, and deduplicates concurrent loads. Every successful read records range count, cell count, and a deterministic source revision so operators can distinguish a real data change from a repeated refresh. Transient HTTP 408/429/5xx failures are retried with bounded backoff and a 12-second timeout. If the live source still fails, NEXUS serves the last successful gzip snapshot and marks the UI as `fallback` or `stale` instead of silently presenting it as live.
 
-The dashboard refreshes every 30 seconds only while the tab is visible and online. Manual sync bypasses the memory cache. Request cancellation and sequence checks prevent a slower, older response from overwriting a newer filter result.
+The dashboard refreshes every 30 seconds only while the tab is visible and online. Manual sync bypasses the memory cache. Request cancellation and sequence checks prevent a slower, older response from overwriting a newer filter result. API responses expose `X-Data-State`, `X-Data-Provider`, `X-Data-As-Of`, and `X-Data-Revision` for monitoring and incident checks.
 
 ## Calculation boundaries
 

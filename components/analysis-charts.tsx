@@ -84,20 +84,28 @@ export function FulfillmentFunnelChart({ stages }: { stages: FlowStage[] }) {
 }
 
 export function LaborBalanceChart({ points }: { points: LaborBalancePoint[] }) {
+  const usage = points.map((point) => point.actualMandays === null || point.budgetMandays === null || point.budgetMandays <= 0
+    ? null
+    : Number((point.actualMandays / point.budgetMandays * 100).toFixed(2)));
   return <Chart height={350} option={{
     animationDuration: 350,
-    tooltip: { ...tooltip, trigger: "axis" },
+    tooltip: {
+      ...tooltip,
+      trigger: "axis",
+      formatter: (params: Array<{ dataIndex: number; marker: string; seriesName: string; value: number | null }>) => {
+        const index = params[0]?.dataIndex ?? 0;
+        const point = points[index];
+        const rows = params.map((item) => `${item.marker}${item.seriesName}: <strong>${item.value === null ? "—" : `${Number(item.value).toFixed(1)}%`}</strong>`).join("<br/>");
+        return `${point?.date ?? ""}<br/>${rows}<br/><span style="color:#c3ccd6">Actual ${number(point?.actualMandays)} MD · Budget ${number(point?.budgetMandays)} MD</span>`;
+      },
+    },
     legend: { top: 0, left: 0, itemWidth: 16, itemHeight: 4, textStyle: { color: "#54637a", fontSize: 11 } },
-    grid: { left: 54, right: 54, top: 52, bottom: 36 },
+    grid: { left: 58, right: 76, top: 52, bottom: 36 },
     xAxis: { type: "category", data: points.map((point) => point.date), ...axis, axisLabel: { color: "#54637a", fontSize: 11, formatter: (value: string) => value.slice(5), interval: 3 } },
-    yAxis: [
-      { type: "value", name: "Mandays", nameTextStyle: { color: "#54637a", fontSize: 11 }, axisLabel: { color: "#54637a", fontSize: 11 }, splitLine: split },
-      { type: "value", name: "%", min: 0, nameTextStyle: { color: "#54637a", fontSize: 11 }, axisLabel: { color: "#54637a", fontSize: 11, formatter: "{value}%" }, splitLine: { show: false } },
-    ],
+    yAxis: { type: "value", min: 0, max: (value: { max: number }) => Math.max(120, Math.ceil(value.max / 10) * 10), axisLabel: { color: "#54637a", fontSize: 11, formatter: "{value}%" }, splitLine: split },
     series: [
-      { name: "Budget MD", type: "bar", data: points.map((point) => point.budgetMandays), barMaxWidth: 10, itemStyle: { color: "#bfd0f8", borderRadius: [3, 3, 0, 0] } },
-      { name: "Actual MD", type: "bar", data: points.map((point) => point.actualMandays), barMaxWidth: 10, itemStyle: { color: palette[0], borderRadius: [3, 3, 0, 0] } },
-      { name: "Productivity", type: "line", yAxisIndex: 1, data: points.map((point) => point.productivity), showSymbol: false, connectNulls: false, lineStyle: { color: palette[3], width: 2.2 }, itemStyle: { color: palette[3] }, markLine: { symbol: "none", silent: true, lineStyle: { color: "#e36a50", type: "dashed", opacity: 0.55 }, data: [{ yAxis: 100, label: { formatter: "target", color: "#54637a", fontSize: 10 } }] } },
+      { name: "Pemakaian MD", type: "bar", data: usage, barMaxWidth: 14, itemStyle: { color: "#bfd0f8", borderColor: palette[0], borderWidth: 1, borderRadius: [3, 3, 0, 0] } },
+      { name: "Produktivitas", type: "line", data: points.map((point) => point.productivity), showSymbol: false, connectNulls: false, lineStyle: { color: palette[3], width: 2.2 }, itemStyle: { color: palette[3] }, markLine: { symbol: "none", silent: true, lineStyle: { color: "#5f6d80", type: "dashed", opacity: 0.7 }, data: [{ yAxis: 100, label: { formatter: "acuan 100%", color: "#54637a", fontSize: 10 } }] } },
     ],
   }} />;
 }
@@ -112,7 +120,7 @@ export function CapacityHistoryChart({ points }: { points: CapacityHistoryPoint[
     animationDuration: 350,
     tooltip: { ...tooltip, trigger: "axis", valueFormatter: (value: number | null) => value == null ? "—" : `${Number(value).toFixed(1)}%` },
     legend: { top: 0, left: 0, itemWidth: 16, itemHeight: 4, textStyle: { color: "#54637a", fontSize: 11 } },
-    grid: { left: 54, right: 24, top: 50, bottom: 34 },
+    grid: { left: 54, right: 76, top: 50, bottom: 34 },
     xAxis: { type: "category", data: points.map((point) => point.date), boundaryGap: false, ...axis, axisLabel: { color: "#54637a", fontSize: 11, formatter: (value: string) => value.slice(5), interval: 3 } },
     yAxis: { type: "value", min: 0, max: (value: { max: number }) => Math.max(100, Math.ceil(value.max / 10) * 10), axisLabel: { color: "#54637a", fontSize: 11, formatter: "{value}%" }, splitLine: split },
     series: definitions.map((definition, index) => ({ name: definition.name, type: "line", data: points.map((point) => point[definition.key]), showSymbol: false, connectNulls: false, smooth: 0.18, lineStyle: { width: 2, color: definition.color }, itemStyle: { color: definition.color }, areaStyle: { color: definition.color, opacity: 0.035 }, markLine: index === 0 ? { symbol: "none", silent: true, lineStyle: { type: "dashed" }, data: [{ yAxis: 85, lineStyle: { color: palette[2] }, label: { formatter: "warning 85", color: "#855309", fontSize: 10 } }, { yAxis: 92, lineStyle: { color: palette[3] }, label: { formatter: "critical 92", color: "#9d3a26", fontSize: 10 } }] } : undefined })),
@@ -145,14 +153,15 @@ export function RiskHeatmapChart({ matrix }: { matrix: RiskMatrix }) {
 }
 
 export function InitiativePriorityChart({ initiatives }: { initiatives: Initiative[] }) {
-  const effort = { low: 1, medium: 2, high: 3 } as const;
-  return <Chart height={320} option={{
+  const items = [...initiatives].sort((a, b) => b.priorityScore - a.priorityScore);
+  const effortLabel = { low: "rendah", medium: "sedang", high: "tinggi" } as const;
+  return <Chart height={Math.max(300, items.length * 58)} option={{
     animationDuration: 350,
-    tooltip: { ...tooltip, formatter: (params: { dataIndex: number }) => { const item = initiatives[params.dataIndex]; return `<strong>${item.title}</strong><br/>Prioritas ${item.priorityScore}/100<br/>Usaha ${item.effort} · ${item.horizonDays} hari<br/>Owner ${item.owner}`; } },
-    grid: { left: 56, right: 38, top: 34, bottom: 54 },
-    xAxis: { type: "value", min: 0.6, max: 3.4, interval: 1, axisLabel: { color: "#54637a", fontSize: 11, formatter: (value: number) => value === 1 ? "Rendah" : value === 2 ? "Sedang" : value === 3 ? "Tinggi" : "" }, splitLine: split, name: "Usaha implementasi", nameLocation: "middle", nameGap: 36, nameTextStyle: { color: "#54637a", fontSize: 11 } },
-    yAxis: { type: "value", min: 0, max: 100, axisLabel: { color: "#54637a", fontSize: 11 }, splitLine: split, name: "Prioritas", nameTextStyle: { color: "#54637a", fontSize: 11 } },
-    series: [{ type: "scatter", symbolSize: (value: [number, number, number]) => 18 + Math.max(0, 35 - value[2]) * 0.35, data: initiatives.map((item) => ({ value: [effort[item.effort], item.priorityScore, item.horizonDays], name: item.title, itemStyle: { color: item.type === "stabilize" ? palette[0] : item.type === "optimize" ? palette[1] : palette[2] }, label: { show: true, position: "top", color: "#33445c", fontSize: 10, width: 124, overflow: "truncate", formatter: item.title } })), markLine: { symbol: "none", silent: true, data: [{ yAxis: 65, lineStyle: { color: palette[2], type: "dashed" }, label: { formatter: "ambang tindakan", color: "#855309", fontSize: 10 } }] } }],
+    tooltip: { ...tooltip, formatter: (params: { dataIndex: number }) => { const item = items[params.dataIndex]; return `<strong>${item.title}</strong><br/>Prioritas ${item.priorityScore}/100<br/>Usaha ${effortLabel[item.effort]} · ${item.horizonDays} hari<br/>Owner ${item.owner}`; } },
+    grid: { left: 190, right: 46, top: 12, bottom: 34 },
+    xAxis: { type: "value", min: 0, max: 100, axisLabel: { color: "#54637a", fontSize: 11 }, splitLine: split },
+    yAxis: { type: "category", inverse: true, data: items.map((item) => item.title), axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: "#33445c", fontSize: 11, width: 174, overflow: "truncate" } },
+    series: [{ type: "bar", barWidth: 16, data: items.map((item) => ({ value: item.priorityScore, itemStyle: { color: item.type === "stabilize" ? palette[0] : item.type === "optimize" ? palette[1] : palette[2], borderRadius: [0, 4, 4, 0] }, label: { show: true, position: "right", color: "#10213a", fontSize: 11, fontWeight: 700, formatter: `${item.priorityScore}` } })), markLine: { symbol: "none", silent: true, data: [{ xAxis: 65, lineStyle: { color: palette[2], type: "dashed" }, label: { formatter: "mulai", color: "#855309", fontSize: 10 } }] } }],
   }} />;
 }
 
@@ -184,7 +193,7 @@ export function DriverChart({ drivers }: { drivers: DriverSignal[] }) {
 }
 
 export function HealthGauge({ score }: { score: number }) {
-  return <Chart height={185} option={{ series: [{ type: "gauge", startAngle: 205, endAngle: -25, min: 0, max: 100, radius: "88%", center: ["50%", "56%"], progress: { show: true, width: 9, roundCap: true, itemStyle: { color: score < 65 ? palette[3] : score < 82 ? palette[2] : palette[0] } }, axisLine: { lineStyle: { width: 9, color: [[1, "rgba(255,255,255,.12)"]] } }, pointer: { show: false }, axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false }, title: { offsetCenter: [0, "38%"], color: "#9aa8ba", fontSize: 11 }, detail: { valueAnimation: true, offsetCenter: [0, "0%"], color: "#fff", fontSize: 34, fontWeight: 700, formatter: "{value}" }, data: [{ value: score, name: "KESEHATAN SISTEM" }] }] }} />;
+  return <Chart height={185} option={{ series: [{ type: "gauge", startAngle: 205, endAngle: -25, min: 0, max: 100, radius: "88%", center: ["50%", "56%"], progress: { show: true, width: 9, roundCap: true, itemStyle: { color: score < 65 ? palette[3] : score < 82 ? palette[2] : palette[0] } }, axisLine: { lineStyle: { width: 9, color: [[1, "rgba(255,255,255,.12)"]] } }, pointer: { show: false }, axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false }, title: { offsetCenter: [0, "38%"], color: "#9aa8ba", fontSize: 11 }, detail: { valueAnimation: true, offsetCenter: [0, "0%"], color: "#fff", fontSize: 34, fontWeight: 700, formatter: "{value}" }, data: [{ value: score, name: "SKOR KESEHATAN" }] }] }} />;
 }
 
 export function WarehouseComparisonChart({ rows }: { rows: WarehouseComparisonRow[] }) {

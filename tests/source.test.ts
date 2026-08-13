@@ -20,4 +20,14 @@ describe("data source controls", () => {
     expect(__sourceTest.positiveInteger("9999", 30, 15, 300)).toBe(300);
     expect(__sourceTest.positiveInteger("bad", 30, 15, 300)).toBe(30);
   });
+
+  it("builds a stable revision and counts cells for the sync contract", () => {
+    const sheets = { "Frozen - PGS": [["A", 1], ["B", 2]], Highlight: [["x"]] };
+    const first = __sourceTest.sourceStats(sheets);
+    const second = __sourceTest.sourceStats({ Highlight: [["x"]], "Frozen - PGS": [["A", 1], ["B", 2]] });
+
+    expect(first.cellsLoaded).toBe(5);
+    expect(first.revision).toMatch(/^[a-f0-9]{12}$/);
+    expect(second.revision).toBe(first.revision);
+  });
 });

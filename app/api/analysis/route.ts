@@ -54,6 +54,9 @@ export async function GET(request: NextRequest) {
         "Cache-Control": "private, no-store, max-age=0",
         "Server-Timing": `source;dur=${dataset.sync?.latencyMs ?? 0};desc=\"${dataset.sync?.state ?? dataset.sourceMode}\"`,
         "X-Data-State": dataset.sync?.state ?? dataset.sourceMode,
+        "X-Data-Provider": dataset.sync?.provider ?? dataset.sourceMode,
+        "X-Data-As-Of": payload.context.asOf,
+        "X-Data-Revision": dataset.sync?.revision ?? "unknown",
         "X-Content-Type-Options": "nosniff",
       },
     });

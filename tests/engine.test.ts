@@ -40,6 +40,7 @@ describe("analysis engine", () => {
   it("uses rolling windows for D/W/M", () => {
     expect(__test.windows("2026-08-12", "weekly").current).toEqual({ start: "2026-08-06", end: "2026-08-12", days: 7 });
     expect(__test.windows("2026-08-12", "daily").previous.end).toBe("2026-08-11");
+    expect(__test.jakartaDate("2026-08-13T18:30:00Z")).toBe("2026-08-14");
   });
 
   it("derives forecast accuracy and cancellation from connected metrics", () => {

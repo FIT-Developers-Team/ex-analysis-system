@@ -47,6 +47,12 @@ function shiftIso(date: string, days: number): string {
   return iso(new Date(new Date(`${date}T00:00:00Z`).valueOf() + days * DAY));
 }
 
+function jakartaDate(instant: string): string {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date(instant));
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+}
+
 function windows(asOf: string, period: Period, rangeStart?: string): { current: Window; previous: Window } {
   const customDays = rangeStart ? Math.floor((new Date(`${asOf}T00:00:00Z`).valueOf() - new Date(`${rangeStart}T00:00:00Z`).valueOf()) / DAY) + 1 : null;
   const days = period === "custom" ? customDays ?? 1 : period === "daily" ? 1 : period === "weekly" ? 7 : 30;
@@ -509,7 +515,7 @@ function buildInitiatives(
     dcc: ["inventory-sloc-service"],
     fleet: ["warehouse-fleet-hub"],
   };
-  const adaptive = (key: string, pain: PainPoint | null): AdaptiveFields & Partial<Template> => {
+  const adaptive = (key: string, pain: PainPoint | null): AdaptiveFields & Partial<Template> & Partial<ExperimentFields> => {
     const cancel = kpiValue("cancel_rate");
     const demandFill = kpiValue("demand_fill_rate");
     const productivity = kpiValue("productivity_attainment");
@@ -567,11 +573,15 @@ function buildInitiatives(
     if (key === "productivity") {
       if ((dcc !== null && dcc < 95) || (troubleshoot !== null && troubleshoot < 85) || (pickface !== null && pickface < 80)) return {
         ...defaultFields,
-        adaptiveVariant: "productivity-pickface-constraint",
-        title: "Pickface Constraint Removal Cell",
-        whyNow: `Productivity ${formatPct(productivity)} bergerak bersama sinyal inventory: DCC ${formatPct(dcc)}, troubleshoot FR ${formatPct(troubleshoot)}, Pick-to-PF ${formatPct(pickface)}.`,
-        trigger: "Aktif ketika productivity <92% dan sedikitnya satu guardrail inventory ikut gagal.",
-        intervention: "Kelola loss tree per jam dari SLOC/replenish/troubleshoot ke picking; tahan penambahan MP sampai constraint non-labor terukur.",
+        adaptiveVariant: "productivity-loss-attribution",
+        title: "Productivity Loss Attribution Test",
+        portfolioRole: "validate",
+        whyNow: `Produktivitas saat ini ${formatPct(productivity)}, sementara sinyal inventory masih tertekan: DCC ${formatPct(dcc)}, troubleshoot FR ${formatPct(troubleshoot)}, Pick-to-PF ${formatPct(pickface)}. Hubungan ke loss picker belum boleh diasumsikan.`,
+        trigger: "Mulai saat productivity <92% dan sedikitnya satu guardrail inventory gagal pada shift yang sama.",
+        intervention: "Bandingkan shift setara berdasarkan volume, effective hours, pickface, troubleshoot, dan loss reason sebelum memilih perbaikan proses atau tambahan MP.",
+        decisionQuestion: "Apakah breach inventory benar-benar menjelaskan loss productivity pada volume dan effective hours yang setara?",
+        counterfactual: "Jika productivity tetap lemah saat pickface dan recovery sehat, method, skill mix, target, atau waiting loss lain menjadi kandidat utama.",
+        leadingIndicators: ["Output per effective hour", "Pick-to-PF", "Wait/travel/rework minutes"],
       };
       if ((mandays ?? 0) < -3 && (sla ?? 100) < 98) return {
         ...defaultFields,
@@ -637,9 +647,9 @@ function buildInitiatives(
     const priorityScore = Math.round(priorityBreakdown.impact * 0.45 + priorityBreakdown.recurrence * 0.25 + priorityBreakdown.evidence * 0.2 + priorityBreakdown.feasibility * 0.1);
     return [{
       ...template,
-      ...adaptation,
       ...controls[key],
       ...experiments[key],
+      ...adaptation,
       id: `${warehouse}-${key}-initiative`,
       warehouse,
       confidence: pain.confidence,
@@ -651,9 +661,9 @@ function buildInitiatives(
   });
   const fallbacks = ["forecast", "productivity"].filter((key) => !selected.some((item) => item.id.includes(`-${key}-`))).map((key) => ({
     ...templates[key],
-    ...adaptive(key, null),
     ...controls[key],
     ...experiments[key],
+    ...adaptive(key, null),
     id: `${warehouse}-${key}-initiative`,
     warehouse,
     confidence: "low" as const,
@@ -707,7 +717,7 @@ function functionalModules(points: MetricPoint[], current: Window, previous: Win
       division: module.division,
       score,
       status,
-      headline: weakest ? `${weakest.label} menjadi constraint utama` : "Belum ada constraint terukur",
+      headline: weakest ? `${weakest.label} menjadi kendala utama` : "Belum ada kendala terukur",
       kpis,
     };
   });
@@ -1937,12 +1947,32 @@ export function buildAnalysis(
   const role = options.role && options.role !== "All" ? options.role : "All";
   const kpis = KPI_KEYS.map((key) => reading(warehousePoints, key, current, previous));
   const health = healthFrom(kpis);
+  const sync = dataset.sync ?? {
+    provider: dataset.sourceMode,
+    state: dataset.sourceMode === "snapshot" ? "fallback" as const : "live" as const,
+    lastAttemptAt: dataset.fetchedAt,
+    lastSuccessAt: dataset.fetchedAt,
+    latencyMs: null,
+    attempts: 1,
+    rangesLoaded: 0,
+    cellsLoaded: dataset.points.length,
+    revision: null,
+    cacheExpiresAt: null,
+    staleAfterSeconds: 86_400,
+    isStale: false,
+    message: "Metadata sinkron belum tersedia pada dataset ini.",
+  };
+  const referenceDate = jakartaDate(sync.lastAttemptAt);
+  const operationalLagDays = Math.max(0, Math.floor((Date.parse(`${referenceDate}T00:00:00Z`) - Date.parse(`${asOf}T00:00:00Z`)) / 86_400_000));
   const confidence = Math.round(kpis.reduce((sum, item) => sum + item.coverage, 0) / kpis.length * 100);
   const weakest = [...kpis].filter((item) => item.value !== null).sort((a, b) => scoreMetric(a.key, a.value) - scoreMetric(b.key, b.value)).slice(0, 2);
   const pains = painAnalysis(warehousePoints, dataset.highlights, warehouse, asOf);
   const noOpsDates = noOperationDates(warehousePoints);
   const noOpsInWindow = [...noOpsDates].filter((date) => date >= shiftIso(asOf, -83) && date <= asOf);
   const dataWarnings: string[] = [];
+  if (sync.state === "fallback") dataWarnings.push("Analisis memakai snapshot terakhir; perubahan terbaru di Google Sheet belum terkonfirmasi.");
+  else if (sync.isStale) dataWarnings.push("Koneksi sumber berhasil, tetapi hasil sinkron melewati batas freshness yang ditetapkan.");
+  if (operationalLagDays > 2) dataWarnings.push(`Tanggal operasi terakhir tertinggal ${operationalLagDays} hari dari percobaan sinkron terbaru.`);
   if (dataset.diagnostics.formulaErrors > 0) dataWarnings.push(`${dataset.diagnostics.formulaErrors.toLocaleString("id-ID")} sel sumber mengandung formula error dan dikeluarkan dari perhitungan.`);
   if (confidence < 75) dataWarnings.push(`Coverage KPI periode ini ${confidence}%; hasil ber-confidence rendah perlu divalidasi.`);
   if (health.pillarsAvailable < health.pillarsTotal) dataWarnings.push(`${health.pillarsTotal - health.pillarsAvailable} dari ${health.pillarsTotal} pilar KPI tidak memiliki data pada window ini; skor kesehatan dihitung atas basket yang lebih kecil dan tidak setara dengan warehouse yang datanya lengkap.`);
@@ -1982,19 +2012,6 @@ export function buildAnalysis(
   const threads = operationalThreads(warehousePoints, current, kpis);
   const contextGaps = decisionCoverageGaps(warehousePoints, current, kpis, semanticCatalog, threads, zones);
   const chartWindow = visualWindow(current, effectivePeriod);
-  const sync = dataset.sync ?? {
-    provider: dataset.sourceMode,
-    state: dataset.sourceMode === "snapshot" ? "fallback" as const : "live" as const,
-    lastAttemptAt: dataset.fetchedAt,
-    lastSuccessAt: dataset.fetchedAt,
-    latencyMs: null,
-    attempts: 1,
-    rangesLoaded: 0,
-    cacheExpiresAt: null,
-    staleAfterSeconds: 86_400,
-    isStale: false,
-    message: "Metadata sinkron belum tersedia pada dataset ini.",
-  };
   const activeTrendKeys = division === "All" ? ["forecast_accuracy", "productivity_attainment", "demand_fill_rate", "capacity_utilization", "cancel_rate", "dcc_accuracy"]
     : MODULES.find((module) => module.division === division)?.keys.slice(0, 6) ?? ["forecast_accuracy", "productivity_attainment"];
 
@@ -2013,6 +2030,7 @@ export function buildAnalysis(
       sourceMode: dataset.sourceMode,
       sourceName: dataset.sourceName,
       fetchedAt: dataset.fetchedAt,
+      operationalLagDays,
       sync,
     },
     health: {
@@ -2023,7 +2041,7 @@ export function buildAnalysis(
         : health.status === "critical" ? "Intervensi lintas fungsi diperlukan"
         : health.criticalKpis.length ? `Skor agregat sehat, tetapi ${health.criticalKpis.length} KPI menembus guardrail`
         : health.status === "watch" ? "Operasi belum stabil" : "Operasi dalam kendali",
-      narrative: weakest.length ? `${weakest.map((item) => item.label).join(" dan ")} menjadi pressure point utama. Baca bersama volume, mandays, SLA, dan capacity—jangan mengoptimalkan satu KPI secara terpisah.` : "Data belum cukup untuk menentukan pressure point; sistem tidak memberi status kritis tanpa evidence minimum.",
+      narrative: weakest.length ? `${weakest.map((item) => item.label).join(" dan ")} menjadi titik masalah utama. Baca bersama volume, mandays, SLA, dan kapasitas—jangan mengoptimalkan satu KPI secara terpisah.` : "Data belum cukup untuk menentukan masalah utama; sistem tidak memberi status kritis tanpa bukti minimum.",
       confidence,
       dataWarnings,
       criticalKpis: health.criticalKpis,
@@ -2064,4 +2082,4 @@ export function buildAnalysis(
   };
 }
 
-export const __test = { shiftIso, windows, normalizePercent, scoreMetric, decayScore, healthFrom, noOperationDates, correlationPValue, KPI_KEYS };
+export const __test = { shiftIso, jakartaDate, windows, normalizePercent, scoreMetric, decayScore, healthFrom, noOperationDates, correlationPValue, KPI_KEYS };

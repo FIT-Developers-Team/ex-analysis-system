@@ -52,6 +52,8 @@ export interface DataSyncMetadata {
   latencyMs: number | null;
   attempts: number;
   rangesLoaded: number;
+  cellsLoaded: number;
+  revision: string | null;
   cacheExpiresAt: string | null;
   staleAfterSeconds: number;
   isStale: boolean;
@@ -159,6 +161,7 @@ export interface AnalysisPayload {
     sourceMode: OperationalDataset["sourceMode"];
     sourceName: string;
     fetchedAt: string;
+    operationalLagDays: number;
     sync: DataSyncMetadata;
   };
   health: {

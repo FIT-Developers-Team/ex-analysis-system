@@ -4,6 +4,7 @@ import path from "node:path";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { gunzip, gzip } from "node:zlib";
 import { promisify } from "node:util";
+import { createHash } from "node:crypto";
 import { parseOperationalSheets, type RawCell, type RawSheet } from "@/lib/data/parser";
 import type { DataSyncMetadata, OperationalDataset } from "@/lib/types";
 
@@ -53,6 +54,17 @@ function compactDataset(value: OperationalDataset): OperationalDataset {
   return { ...value, points: value.points.filter((point) => point.quality === "valid" || point.quality === "future") };
 }
 
+function sourceStats(sheets: Record<string, RawSheet>): { cellsLoaded: number; revision: string } {
+  const hash = createHash("sha256");
+  let cellsLoaded = 0;
+  for (const [name, rows] of Object.entries(sheets).sort(([left], [right]) => left.localeCompare(right))) {
+    hash.update(name);
+    hash.update(JSON.stringify(rows));
+    cellsLoaded += rows.reduce((sum, row) => sum + row.length, 0);
+  }
+  return { cellsLoaded, revision: hash.digest("hex").slice(0, 12) };
+}
+
 function toRawCell(value: ExcelJS.CellValue): RawCell {
   if (value === null || value === undefined) return null;
   if (value instanceof Date || typeof value === "number" || typeof value === "boolean" || typeof value === "string") return value;
@@ -84,6 +96,7 @@ async function loadWorkbook(filePath: string): Promise<OperationalDataset> {
     sheets[name] = rows;
   }
   const value = compactDataset(parseOperationalSheets(sheets, "workbook", path.basename(filePath)));
+  const stats = sourceStats(sheets);
   return withSync(value, {
     provider: "workbook",
     state: "live",
@@ -91,6 +104,8 @@ async function loadWorkbook(filePath: string): Promise<OperationalDataset> {
     latencyMs: Date.now() - startedAt,
     attempts: 1,
     rangesLoaded: Object.keys(sheets).length,
+    cellsLoaded: stats.cellsLoaded,
+    revision: stats.revision,
     cacheExpiresAt: null,
     message: "Workbook lokal berhasil dibaca.",
   });
@@ -172,6 +187,7 @@ async function loadGoogleSheets(): Promise<OperationalDataset> {
   if (missing.some((name) => name !== "Highlight")) throw new Error(`Google Sheets tidak mengembalikan tab wajib: ${missing.join(", ")}.`);
 
   const value = compactDataset(parseOperationalSheets(sheets, "google", "[FIT] Daily Ops Visibility Report 2026"));
+  const stats = sourceStats(sheets);
   return withSync(value, {
     provider: "google",
     state: "live",
@@ -179,6 +195,8 @@ async function loadGoogleSheets(): Promise<OperationalDataset> {
     latencyMs: Date.now() - startedAt,
     attempts,
     rangesLoaded: Object.keys(sheets).length,
+    cellsLoaded: stats.cellsLoaded,
+    revision: stats.revision,
     cacheExpiresAt: null,
     message: `Google Sheets tersinkron dalam ${attempts} percobaan.`,
   });
@@ -198,6 +216,8 @@ async function loadSnapshot(snapshotPath: string, reason: string): Promise<Opera
     latencyMs: Date.now() - startedAt,
     attempts: 1,
     rangesLoaded: value.sync?.rangesLoaded ?? 0,
+    cellsLoaded: value.sync?.cellsLoaded ?? compacted.points.length,
+    revision: value.sync?.revision ?? null,
     cacheExpiresAt: null,
     message: reason,
   });
@@ -275,4 +295,4 @@ export async function getOperationalDataset(options: { force?: boolean } = {}): 
   }
 }
 
-export const __sourceTest = { ageSeconds, retryableStatus, retryDelayMs, sheetNameFromRange, positiveInteger };
+export const __sourceTest = { ageSeconds, retryableStatus, retryDelayMs, sheetNameFromRange, positiveInteger, sourceStats };
