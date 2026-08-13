@@ -69,6 +69,18 @@ type ModuleStatus = AnalysisPayload["functionalModules"][number]["status"];
 // measurement, not a passing or failing one.
 const moduleStatusLabel: Record<ModuleStatus, string> = { controlled: "Terkendali", watch: "Waspada", critical: "Kritis", unavailable: "Tidak ada data" };
 const moduleTone = (status: ModuleStatus) => (status === "controlled" ? "good" : status === "unavailable" ? "neutral" : status);
+const evidenceStateLabel: Record<AnalysisPayload["causalChains"][number]["state"], string> = {
+  verified: "Fakta terukur",
+  supported: "Didukung data",
+  hypothesis: "Hipotesis terarah",
+  blocked: "Bukti belum cukup",
+};
+const readinessLabel: Record<AnalysisPayload["metricCatalog"][number]["readiness"], string> = {
+  decision_ready: "Siap keputusan",
+  diagnostic_only: "Diagnostik",
+  observational: "Observasi",
+  unconfirmed: "Belum terkonfirmasi",
+};
 
 function fmtDate(date: string) {
   return new Intl.DateTimeFormat("id-ID", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(`${date}T00:00:00`));
@@ -316,6 +328,27 @@ function RelationshipLab({ data }: { data: AnalysisPayload }) {
   return (
     <>
       <PageIntro eyebrow="Diagnosis lintas fungsi" title="Bedakan hubungan data dari penyebab nyata" description="Hubungan 84 hari menjadi petunjuk investigasi, bukan bukti sebab-akibat. Sampel, jeda, keyakinan, dan arah hipotesis selalu ditampilkan." meta={`Riwayat 84 hari · sampai ${fmtDate(data.context.asOf)}`} />
+      <section className="section-block causal-section">
+        <SectionHeader eyebrow="Operating logic" title="Jejak sebab-akibat yang dapat diaudit" description="Urutan dibangun dari definisi operasi, loss tree aktual, recurrent pain, dan hubungan statistik. Fakta, dukungan, hipotesis, serta bukti yang masih hilang dipisahkan secara eksplisit." />
+        <div className="causal-chain-grid">
+          {data.causalChains.map((chain) => (
+            <article className={`causal-card causal-card--${chain.state}`} key={chain.id}>
+              <header>
+                <div><span>{chain.domain}</span><h3>{chain.title}</h3></div>
+                <div className="causal-score"><strong>{chain.priorityScore}</strong><small>priority</small></div>
+              </header>
+              <div className="causal-badges"><span>{evidenceStateLabel[chain.state]}</span><span>Keyakinan {chain.confidence}</span>{chain.linkedPainIds.length > 0 && <span>{chain.linkedPainIds.length} pain terkait</span>}</div>
+              <p className="causal-cause">{chain.cause}</p>
+              <ol className="causal-mechanism">{chain.mechanism.map((step) => <li key={step}>{step}</li>)}</ol>
+              <div className="causal-outcome"><strong>Dampak sistem</strong><p>{chain.outcome}</p></div>
+              <div className="causal-evidence"><strong>Bukti aktif</strong>{chain.evidence.map((item) => <span key={item}><CheckCircle2 size={13} />{item}</span>)}</div>
+              {chain.counterEvidence.length > 0 && <div className="causal-counter"><strong>Bukti penyeimbang</strong>{chain.counterEvidence.map((item) => <span key={item}>{item}</span>)}</div>}
+              <details className="causal-missing"><summary>Bukti berikut yang perlu dikumpulkan</summary>{chain.missingEvidence.map((item) => <span key={item}>{item}</span>)}</details>
+              <footer><ArrowRight size={15} /><strong>{chain.recommendedAction}</strong></footer>
+            </article>
+          ))}
+        </div>
+      </section>
       <section className="split-grid split-grid--wide-left">
         <div className="panel chart-panel">
           <SectionHeader eyebrow="Peta hubungan" title="Driver yang bergerak bersama outcome" description="Pearson r: biru searah hipotesis, emas berlawanan, abu-abu belum meyakinkan." />
@@ -408,6 +441,7 @@ function InitiativePortfolio({ data }: { data: AnalysisPayload }) {
         {data.initiatives.map((initiative, index) => (
           <article className="initiative-card" key={initiative.id}>
             <header><span className="initiative-number">0{index + 1}</span><div><div className="tag-row"><span>{initiative.type}</span><span>keyakinan {initiative.confidence}</span><span>prioritas {initiative.priorityScore}</span></div><h3>{initiative.title}</h3><div className="initiative-meta"><span><Users size={13} />{initiative.owner}</span><span><BarChart3 size={13} />usaha {initiative.effort}</span><span><CalendarDays size={13} />{initiative.horizonDays} hari</span></div></div></header>
+            <div className="initiative-adaptive"><div><span>Mengapa sekarang</span><strong>{initiative.whyNow}</strong></div><div><span>Trigger eksekusi</span><strong>{initiative.trigger}</strong></div><small>Playbook adaptif · {initiative.adaptiveVariant.replaceAll("-", " ")}{initiative.linkedChainIds.length ? ` · ${initiative.linkedChainIds.length} causal chain` : ""}</small></div>
             <div className="initiative-section"><span>Masalah</span><p>{initiative.problem}</p></div><div className="initiative-section"><span>Intervensi</span><p>{initiative.intervention}</p></div><div className="initiative-section initiative-section--impact"><span>Dampak yang dituju</span><p>{initiative.expectedImpact}</p></div>
             <div className="initiative-decision-gates"><div><span>Berhasil bila</span><strong>{initiative.successGate}</strong></div><div><span>Stop-loss</span><strong>{initiative.stopLoss}</strong></div><div className="priority-breakdown"><span>Dasar prioritas</span><p><b>{initiative.priorityBreakdown.impact}</b> dampak · <b>{initiative.priorityBreakdown.recurrence}</b> berulang · <b>{initiative.priorityBreakdown.evidence}</b> bukti · <b>{initiative.priorityBreakdown.feasibility}</b> kelayakan</p></div></div>
             <div className="initiative-evidence"><strong>Bukti yang dipakai</strong>{initiative.evidence.map((item) => <span key={item}>{item}</span>)}</div>
@@ -421,13 +455,42 @@ function InitiativePortfolio({ data }: { data: AnalysisPayload }) {
 
 function MetricRegistry({ data }: { data: AnalysisPayload }) {
   const [query, setQuery] = useState("");
+  const [readiness, setReadiness] = useState<"all" | AnalysisPayload["metricCatalog"][number]["readiness"]>("all");
   const filtered = useMemo(() => data.pivotRows.filter((item) => `${item.division} ${item.role} ${item.metric} ${item.detail}`.toLowerCase().includes(query.toLowerCase())), [data.pivotRows, query]);
+  const filteredSemantics = useMemo(() => data.metricCatalog.filter((item) => {
+    const matchesQuery = `${item.division} ${item.role} ${item.remarks} ${item.metric} ${item.definition} ${item.decisionUse} ${item.caveat ?? ""}`.toLowerCase().includes(query.toLowerCase());
+    return matchesQuery && (readiness === "all" || item.readiness === readiness);
+  }), [data.metricCatalog, query, readiness]);
   return (
     <>
-      <PageIntro eyebrow="Data & pemeriksaan kualitas" title="Telusuri setiap angka sampai konteks operasinya" description="Pivot menampilkan fungsi, peran, metric, detail, agregasi, periode pembanding, coverage, dan arah perubahan." meta={`${data.pivotRows.length} metric · ${data.metricCatalog.length} definisi`} />
+      <PageIntro eyebrow="Data & semantic control" title="Telusuri angka, definisi, dan kelayakan keputusannya" description="Setiap metric dipisahkan sebagai outcome, driver, guardrail, atau konteks—serta diberi status apakah siap untuk keputusan, hanya diagnostik, observasi, atau belum terkonfirmasi." meta={`${data.pivotRows.length} metric · ${data.metricCatalog.length} definisi`} />
+      <section className="semantic-summary" aria-label="Ringkasan semantic layer">
+        <article><span>Metric sumber</span><strong>{data.intelligence.sourceMetrics}</strong><small>{data.intelligence.activeMetrics} aktif pada window</small></article>
+        <article><span>Siap keputusan</span><strong>{data.intelligence.decisionReadyMetrics}</strong><small>terhubung ke logic engine</small></article>
+        <article><span>Diagnostik</span><strong>{data.intelligence.diagnosticMetrics}</strong><small>perlu bukti pendamping</small></article>
+        <article><span>Observasi</span><strong>{data.intelligence.observationalMetrics}</strong><small>konteks, volume, atau plan</small></article>
+        <article className={data.intelligence.unconfirmedMetrics ? "semantic-summary--warning" : ""}><span>Belum terkonfirmasi</span><strong>{data.intelligence.unconfirmedMetrics}</strong><small>tidak memicu rekomendasi</small></article>
+        <article><span>Cakupan makna</span><strong>{data.intelligence.semanticCoveragePct}%</strong><small>punya konteks yang dapat dipakai</small></article>
+      </section>
+      <section className="panel domain-coverage-panel">
+        <SectionHeader eyebrow="Coverage by function" title="Fungsi mana yang cukup terukur untuk keputusan" description="Active coverage menghitung keterisian metric pada window aktif; metric kosong tidak dianggap sehat." />
+        <div className="domain-coverage-grid">{data.intelligence.domains.map((item) => <article key={item.domain}><header><strong>{item.domain}</strong><b>{item.activeCoveragePct}%</b></header><div><i style={{ width: `${item.activeCoveragePct}%` }} /></div><footer><span>{item.activeMetrics}/{item.totalMetrics} aktif</span><span>{item.decisionReadyMetrics} siap keputusan</span></footer></article>)}</div>
+      </section>
       <section className="data-quality-strip"><div><span>Sumber</span><strong>{data.context.sourceName}</strong></div><div><span>Status sinkron</span><strong>{syncLabel(data, null).label}</strong></div><div><span>Berhasil dibaca</span><strong>{new Date(data.context.sync.lastSuccessAt).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}</strong></div><div><span>Rentang aktif</span><strong>{fmtDate(data.context.rangeStart)} – {fmtDate(data.context.rangeEnd)}</strong></div><div><span>Perbandingan</span><strong>{fmtDate(data.context.comparisonStart)} – {fmtDate(data.context.comparisonEnd)}</strong></div><div><span>Coverage KPI</span><strong>{data.health.confidence}%</strong></div></section>
       <section className={`sync-detail sync-detail--${data.context.sync.state}`}><Activity size={17} /><div><strong>{data.context.sync.message}</strong><p>{data.context.sync.rangesLoaded ? `${data.context.sync.rangesLoaded} rentang dibaca` : "Jumlah rentang tidak tercatat"} · {data.context.sync.latencyMs === null ? "durasi tidak tersedia" : `${data.context.sync.latencyMs.toLocaleString("id-ID")} ms`} · stale setelah {Math.round(data.context.sync.staleAfterSeconds / 60)} menit.</p></div></section>
       {data.health.dataWarnings.length > 0 && <section className="warning-panel"><AlertTriangle size={20} /><div><strong>Guardrail kualitas aktif</strong>{data.health.dataWarnings.map((warning) => <p key={warning}>{warning}</p>)}</div></section>}
+      <section className="section-block operating-contract">
+        <SectionHeader eyebrow="Operations semantic contract" title="Aturan yang menjaga insight tetap masuk akal" description="Aturan ini mengikat metric yang saling tarik-menarik, sehingga satu KPI tidak dioptimalkan dengan mengorbankan service, quality, capacity, atau cost." />
+        <div className="operating-rule-grid">{data.intelligence.operatingRules.map((rule, index) => <details key={rule.id} open={index < 2}><summary><span>0{index + 1}</span><strong>{rule.title}</strong><ChevronDown size={15} /></summary><p>{rule.principle}</p><div><Target size={14} /><span>{rule.decisionGuardrail}</span></div></details>)}</div>
+      </section>
+      <section className="panel semantic-registry">
+        <SectionHeader eyebrow="Metric dictionary" title="Definisi dan status penggunaan metric" description="Belum terkonfirmasi berarti metric tetap terlihat, tetapi tidak boleh memicu scoring atau inisiatif sampai definisinya disepakati." action={<div className="segmented-control semantic-filter" aria-label="Filter kesiapan metric"><button className={readiness === "all" ? "active" : ""} onClick={() => setReadiness("all")}>Semua</button><button className={readiness === "decision_ready" ? "active" : ""} onClick={() => setReadiness("decision_ready")}>Siap</button><button className={readiness === "diagnostic_only" ? "active" : ""} onClick={() => setReadiness("diagnostic_only")}>Diagnostik</button><button className={readiness === "observational" ? "active" : ""} onClick={() => setReadiness("observational")}>Observasi</button><button className={readiness === "unconfirmed" ? "active" : ""} onClick={() => setReadiness("unconfirmed")}>Belum pasti</button></div>} />
+        <div className="semantic-toolbar"><div className="search-box"><Search size={17} /><input aria-label="Cari definisi metric" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari metric, definisi, fungsi, atau caveat" /><span>{filteredSemantics.length}</span></div><small>{filteredSemantics.filter((item) => item.activeCoverage > 0).length} metric aktif pada rentang ini</small></div>
+        <div className="semantic-list">
+          {filteredSemantics.slice(0, 160).map((item) => <details className={`semantic-item semantic-item--${item.readiness}`} key={item.id}><summary><div><span>{item.division} · {item.role}{item.remarks ? ` · ${item.remarks}` : ""}</span><strong>{item.metric}</strong></div><div><b>{readinessLabel[item.readiness]}</b><small>{Math.round(item.activeCoverage * 100)}% coverage</small><ChevronDown size={15} /></div></summary><div className="semantic-item__body"><section><span>Definisi</span><p>{item.definition}</p></section><section><span>Dipakai untuk</span><p>{item.decisionUse}</p></section><section><span>Posisi metric</span><p>{item.decisionRole} · {item.family} · {item.polarity.replaceAll("_", " ")}{item.remarks ? ` · ${item.remarks}` : ""}</p></section><section><span>Harus dibaca bersama</span><p>{item.relatedMetrics.join(" · ")}</p></section>{item.caveat && <div className="semantic-caveat"><AlertTriangle size={14} /><p>{item.caveat}</p></div>}</div></details>)}
+          {!filteredSemantics.length && <div className="empty-state"><Info size={18} /><p>Tidak ada metric yang cocok dengan filter ini.</p></div>}
+        </div>
+      </section>
       <section className="panel metric-panel">
         <div className="table-toolbar"><div><TableProperties size={17} /><span>Pivot periode · saat ini vs sebelumnya</span></div><div className="search-box"><Search size={17} /><input aria-label="Cari metric" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari metric, peran, atau fungsi" /><span>{filtered.length}</span></div></div>
         {/* Cell roles are not optional here: role="table" with rows but no cells

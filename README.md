@@ -7,6 +7,9 @@ NEXUS is a connected operations-intelligence dashboard for FIT quick-commerce wa
 - Connects Personalia → Inbound → Inventory → Outbound → Fleet instead of scoring functions in isolation.
 - Compares forecast, actual workload, productivity, SLA, mandays, capacity, cancellation, DCC, troubleshoot, and fulfillment with explicit guardrails.
 - Generates recurring 8-week pain points and at least two evidence-linked project recommendations for each warehouse.
+- Builds auditable causal chains that separate measured facts, statistically supported signals, directional hypotheses, counter-evidence, and evidence still missing.
+- Bundles the 233-entry operations glossary (function, role, BSC/Non-BSC, definition, explanation, and notes) into the metric registry, including definitions whose source values are not active yet.
+- Selects adaptive initiative variants from the current warehouse state; title, trigger, why-now, intervention, and stop-loss change when the operating pattern changes.
 - Provides Daily, Weekly, Monthly, or custom date-range pivots with an equal-length previous comparison.
 - Benchmarks PGS, SRG, BIT, and STR on a common period and cut-off.
 - Includes a transparent scenario lab for volume, attendance, cancel, and process-efficiency changes, guarded by demand fill before cancellation.
@@ -25,11 +28,13 @@ flowchart LR
     SNAP -->|"last-known-good fallback"| API
     API --> DQ["Quality and date guardrails"]
     DQ --> SEM["Metric aliases and derived KPI layer"]
-    SEM --> ENG["Operations analysis engine"]
+    SEM --> ONT["Operations ontology and readiness guardrails"]
+    ONT --> ENG["Operations analysis engine"]
     ENG --> UI["Next.js dashboard"]
     ENG --> REL["Guarded relationship signals"]
     ENG --> DEC["Decision brief and risk matrix"]
-    ENG --> REC["Pain point and initiative engine"]
+    ENG --> REC["Adaptive initiative portfolio"]
+    ENG --> CAUSE["Auditable causal chains"]
 ```
 
 The software stack is free and open-source. Google Sheets API access uses a standard Google service account and its normal free quota; no paid analytics, database, or AI service is required.
@@ -73,7 +78,7 @@ The dashboard refreshes every 30 seconds only while the tab is visible and onlin
 ## Calculation boundaries
 
 - Productivity uses actual goods, not forecast volume.
-- Forecast accuracy compares actual/requested workload against the matching weekly forecast.
+- Forecast accuracy compares demand before cancellation against the matching weekly forecast. An execution decision to cancel demand cannot rewrite planning quality.
 - **Fulfillment is reported twice, on purpose.** `Warehouse FR` divides shipped units by demand *after* cancellation, so cancelling work raises it. `Demand fill rate` divides by demand *before* cancellation and cannot be improved by dropping orders. Read the gap between them as the share of demand that was refused rather than served. The 97% target is derived from the guardrails already in use — FR 99% × (100% − cancel target 2%).
 - Mandays saving is only interpreted as healthy when productivity, SLA, **and cancel rate** are all within guardrail. A warehouse that cancels demand needs fewer mandays and posts higher output per manday at the same time, which is indistinguishable from efficiency unless cancellation is checked first.
 - Cost-to-serve is an operational labor-intensity proxy (`actual picker mandays ÷ RTS × 1,000`), not currency. No wage or financial cost is fabricated when the source does not contain it.
@@ -83,6 +88,8 @@ The dashboard refreshes every 30 seconds only while the tab is visible and onlin
 - DCC is connected to putaway, replenish, troubleshoot, SLOC, and picker pressure.
 - Relabel forecast pieces and troubleshooter mandays are not available in the source; the dashboard discloses those limits and does not manufacture causal claims.
 - `schedule_accuracy` remains visible for inspection but does not trigger pain points or initiatives because its source definition is not yet confirmed.
+- Metric readiness has four explicit states: `decision_ready`, `diagnostic_only`, `observational`, and `unconfirmed`. Unconfirmed definitions remain visible in the registry but are blocked from scoring, risk, relationships, and recommendations.
+- MP Recommendation, division attendance/churn, OTIF, non-picker mandays, and other not-yet-approved fields are not silently promoted into canonical KPI logic. Their source rows remain inspectable until a definition and decision contract are agreed.
 
 ## Measurement integrity rules
 

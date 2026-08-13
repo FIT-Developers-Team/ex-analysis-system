@@ -1,17 +1,21 @@
 import { metricAliasKeys, normalizeLabel } from "@/lib/data/metric-aliases";
+import { buildMetricSemantic, OPERATION_GLOSSARY, OPERATING_RULES } from "@/lib/analysis/operations-ontology";
 import { PRIORITY_WAREHOUSES } from "@/lib/types";
 import type {
   AnalysisPayload,
   AggregationMode,
   CapacityHistoryPoint,
   CapacityZone,
+  CausalChain,
   DecisionInsight,
   DriverSignal,
   FunctionalModule,
   Initiative,
+  IntelligenceSummary,
   MetricPoint,
   MetricReading,
   OperationsEconomics,
+  OperationalMetricSemantic,
   OperationalDataset,
   PainPoint,
   Period,
@@ -119,7 +123,10 @@ function derived(points: MetricPoint[], key: string, window: Window): Aggregate 
     case "inbound_productivity_attainment":
       return ratio(metricValue(points, "checker_productivity", window), metricValue(points, "checker_productivity_target", window));
     case "forecast_accuracy":
-      return ratio(metricValue(points, "outbound_requested", window, "sum"), metricValue(points, "forecast_weekly_outbound", window, "sum"));
+      // Forecast quality is measured against demand before cancellation. Using
+      // the post-cancel request made an operational decision (cancel) rewrite
+      // the planning error and rewarded warehouses for removing demand.
+      return ratio(metricValue(points, "outbound_before_cancel", window, "sum"), metricValue(points, "forecast_weekly_outbound", window, "sum"));
     case "demand_fill_rate":
       // Deliberately measured against demand BEFORE cancellation. fulfillment_rate
       // divides by the post-cancel request, so cancelling work raises it; this one
@@ -439,9 +446,18 @@ function painAnalysis(points: MetricPoint[], highlights: HighlightRecord[], ware
     }));
 }
 
-function buildInitiatives(warehouse: string, pains: PainPoint[], relationships: RelationshipSignal[]): Initiative[] {
+function buildInitiatives(
+  warehouse: string,
+  pains: PainPoint[],
+  relationships: RelationshipSignal[],
+  kpis: MetricReading[],
+  zones: CapacityZone[],
+  economics: OperationsEconomics,
+  chains: CausalChain[],
+): Initiative[] {
   type ControlFields = Pick<Initiative, "valueLens" | "successGate" | "stopLoss">;
-  type Template = Omit<Initiative, "id" | "warehouse" | "confidence" | "priorityScore" | "linkedPainIds" | "evidence" | "priorityBreakdown" | keyof ControlFields>;
+  type AdaptiveFields = Pick<Initiative, "adaptiveVariant" | "whyNow" | "trigger" | "linkedChainIds">;
+  type Template = Omit<Initiative, "id" | "warehouse" | "confidence" | "priorityScore" | "linkedPainIds" | "evidence" | "priorityBreakdown" | keyof ControlFields | keyof AdaptiveFields>;
   const controls: Record<string, ControlFields> = {
     forecast: { valueLens: "cost", successGate: "Forecast 90–110%, productivity ≥100%, cancel ≤2%.", stopLoss: "Hentikan pengurangan MP jika SLA <98% atau demand fill <97%." },
     people: { valueLens: "cost", successGate: "Attendance ≥96% dan SLA ≥98% pada volume band yang sama.", stopLoss: "Batalkan redeployment jika queue atau SLA memburuk dua cut-off berturut-turut." },
@@ -464,11 +480,138 @@ function buildInitiatives(warehouse: string, pains: PainPoint[], relationships: 
     dcc: { title: "SLOC Reliability Sprint", type: "stabilize", owner: "Inventory", effort: "medium", horizonDays: 30, problem: "Akurasi inventory yang rendah menimbulkan loss berantai ke replenishment, troubleshoot, dan picking.", intervention: "Targetkan SLOC berulang bermasalah dengan DCC risk-based, root-cause tag, dan close-loop correction.", expectedImpact: "Meningkatkan SLOC × Qty accuracy serta mengurangi task lost dan rework.", measurement: ["SLOC × Qty accuracy", "LDP/LBH", "Pick to Lost", "Replenishment completion"], first14Days: ["Pareto SLOC repeat offender", "Audit 20 SLOC tertinggi", "Lock owner dan due date correction"] },
     fleet: { title: "Dispatch-to-Arrival Control", type: "stabilize", owner: "Fleet", effort: "low", horizonDays: 14, problem: "Punctuality fleet dapat menahan service completion setelah warehouse selesai menyiapkan order.", intervention: "Pisahkan delay warehouse vs fleet, pasang departure cut-off, dan pantau route repeat offender.", expectedImpact: "Menaikkan on-time dispatch/arrival tanpa menyalahkan fulfillment warehouse.", measurement: ["On-time dispatch", "On-time arrival", "Truck delivered", "Hub received"], first14Days: ["Tag ownership setiap delay", "Pareto route berulang", "Daily recovery untuk departure miss"] },
   };
+  const kpiValue = (key: string) => kpis.find((item) => item.key === key)?.value ?? null;
+  const formatPct = (value: number | null) => value === null ? "n/a" : `${value.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%`;
+  const highestZone = [...zones].filter((zone) => zone.utilization !== null).sort((a, b) => (b.utilization ?? 0) - (a.utilization ?? 0))[0];
+  const chainByKey: Record<string, string[]> = {
+    forecast: ["forecast-labor-productivity"],
+    people: ["forecast-labor-productivity", "checker-labor-sla"],
+    productivity: ["forecast-labor-productivity", "inventory-sloc-service"],
+    cancel: ["cancel-demand-service"],
+    capacity: ["zone-capacity-flow"],
+    replenishment: ["inventory-sloc-service"],
+    troubleshoot: ["inventory-sloc-service"],
+    dcc: ["inventory-sloc-service"],
+    fleet: ["warehouse-fleet-hub"],
+  };
+  const adaptive = (key: string, pain: PainPoint | null): AdaptiveFields & Partial<Template> => {
+    const cancel = kpiValue("cancel_rate");
+    const demandFill = kpiValue("demand_fill_rate");
+    const productivity = kpiValue("productivity_attainment");
+    const forecast = kpiValue("forecast_accuracy");
+    const sla = kpiValue("sla_checker_inbound");
+    const mandays = kpiValue("mandays_variance");
+    const dcc = kpiValue("dcc_accuracy");
+    const troubleshoot = kpiValue("troubleshoot_fr");
+    const pickface = kpiValue("pick_to_pf");
+    const linkedChainIds = (chainByKey[key] ?? []).filter((id) => chains.some((chain) => chain.id === id));
+    const defaultFields: AdaptiveFields = {
+      adaptiveVariant: `${key}-baseline-validation`,
+      whyNow: pain ? `${pain.recurrenceWeeks} dari 8 minggu menembus guardrail dengan impact score ${pain.impactScore}.` : "Evidence berulang belum melewati ambang; playbook dipakai untuk validasi baseline.",
+      trigger: pain ? `Aktif ketika breach ${key} muncul kembali pada cut berikut.` : "Aktif hanya setelah dua cut berturut-turut menunjukkan gap yang sama.",
+      linkedChainIds,
+    };
+    if (key === "cancel") {
+      if ((cancel ?? 0) >= 20) return {
+        ...defaultFields,
+        adaptiveVariant: "cancel-demand-protection-war-room",
+        title: "Demand Protection War Room",
+        whyNow: `Cancel ${formatPct(cancel)} dan demand fill ${formatPct(demandFill)} menunjukkan demand loss material, bukan sekadar penyesuaian beban.`,
+        trigger: "Aktif segera saat cancel harian >10% atau projected demand fill <90%.",
+        intervention: "Bekukan cancel otomatis, wajibkan reason-code dan capacity proof per jam, lalu gunakan approval head untuk setiap cancel tambahan sampai demand fill pulih.",
+        expectedImpact: "Memulihkan demand yang seharusnya dapat dilayani dan membedakan constraint nyata dari keputusan cancel yang avoidable.",
+      };
+      if ((cancel ?? 0) > 5 && (economics.capacityHeadroomPct ?? 0) >= 8) return {
+        ...defaultFields,
+        adaptiveVariant: "cancel-headroom-challenge",
+        title: "Capacity-Proof Cancel Challenge",
+        whyNow: `Cancel ${formatPct(cancel)} terjadi saat headroom zona masih ${formatPct(economics.capacityHeadroomPct)}; kemampuan proses perlu dibuktikan sebelum demand dihapus.`,
+        trigger: "Wajib review ketika cancel >2% dan headroom zona ≥8%.",
+      };
+      return { ...defaultFields, adaptiveVariant: "cancel-exception-gate", title: "Cancel Exception Gate", whyNow: `Cancel ${formatPct(cancel)} perlu dijaga agar fulfillment post-cancel tidak menutupi demand fill ${formatPct(demandFill)}.` };
+    }
+    if (key === "forecast") {
+      if (forecast !== null && forecast < 85) return {
+        ...defaultFields,
+        adaptiveVariant: "forecast-volume-dilution",
+        title: "Volume-Dilution Labor Rebaseline",
+        whyNow: `Demand hanya ${formatPct(forecast)} dari forecast sementara mandays gap ${formatPct(mandays)} dan productivity ${formatPct(productivity)}.`,
+        trigger: "Aktif ketika demand/forecast <90% dua cut atau productivity turun pada actual MD tetap.",
+        intervention: "Rebaseline staffing per volume band dan weekday, lalu redeploy flex pool dari remaining workload—bukan forecast awal.",
+      };
+      if (forecast !== null && forecast > 115) return {
+        ...defaultFields,
+        adaptiveVariant: "forecast-surge-flex",
+        title: "Surge Flex Capacity Cell",
+        whyNow: `Demand mencapai ${formatPct(forecast)} dari forecast; lindungi SLA dan demand fill tanpa menormalkan overtime permanen.`,
+        trigger: "Aktif ketika demand/forecast >110% dan remaining workload melewati kapasitas jam tersisa.",
+        intervention: "Aktifkan flex pool dan resequence workload pada constrained process; tutup surge setelah run-rate kembali ke operating band.",
+      };
+      return { ...defaultFields, adaptiveVariant: "forecast-weekday-bias", title: "Weekday Forecast Bias Control", whyNow: `Forecast accuracy ${formatPct(forecast)} berulang, tetapi arah bias perlu dipisahkan per weekday dan cut-off.` };
+    }
+    if (key === "productivity") {
+      if ((dcc !== null && dcc < 95) || (troubleshoot !== null && troubleshoot < 85) || (pickface !== null && pickface < 80)) return {
+        ...defaultFields,
+        adaptiveVariant: "productivity-pickface-constraint",
+        title: "Pickface Constraint Removal Cell",
+        whyNow: `Productivity ${formatPct(productivity)} bergerak bersama sinyal inventory: DCC ${formatPct(dcc)}, troubleshoot FR ${formatPct(troubleshoot)}, Pick-to-PF ${formatPct(pickface)}.`,
+        trigger: "Aktif ketika productivity <92% dan sedikitnya satu guardrail inventory ikut gagal.",
+        intervention: "Kelola loss tree per jam dari SLOC/replenish/troubleshoot ke picking; tahan penambahan MP sampai constraint non-labor terukur.",
+      };
+      if ((mandays ?? 0) < -3 && (sla ?? 100) < 98) return {
+        ...defaultFields,
+        adaptiveVariant: "productivity-undercoverage-recovery",
+        title: "Undercoverage Recovery Cell",
+        whyNow: `Actual MD ${formatPct(mandays)} terhadap budget, productivity ${formatPct(productivity)}, dan SLA ${formatPct(sla)} menunjukkan saving belum aman.`,
+        trigger: "Aktif ketika actual MD <budget sementara productivity atau SLA menembus guardrail.",
+      };
+      return { ...defaultFields, adaptiveVariant: "productivity-method-skill-mix", title: "Method & Skill-Mix Productivity Cell", whyNow: `Productivity ${formatPct(productivity)} perlu dibedah per method, OJT/regular, zone, dan loss reason—bukan ditutup dengan tambahan MP.` };
+    }
+    if (key === "people") {
+      return (sla ?? 100) < 98
+        ? { ...defaultFields, adaptiveVariant: "people-attendance-sla", title: "Attendance-to-SLA Flex Pool", whyNow: `Gap people berulang bersamaan dengan SLA ${formatPct(sla)}; redeployment harus diarahkan ke jam constraint.` }
+        : { ...defaultFields, adaptiveVariant: "people-shift-mix", title: "Shift Mix & Flex Pool Rebalance", whyNow: `People signal berulang tetapi SLA ${formatPct(sla)} masih terlindungi; fokus pada skill mix dan dilution.` };
+    }
+    if (key === "capacity") return {
+      ...defaultFields,
+      adaptiveVariant: `capacity-${highestZone?.zone.toLowerCase() ?? "zone"}-release`,
+      title: `${highestZone?.zone ?? "Zonal"} Constraint Release`,
+      whyNow: `${highestZone?.zone ?? "Zona teratas"} berada di ${formatPct(highestZone?.utilization ?? null)} dan menjadi operating envelope tersempit.`,
+      trigger: `Aktif pada warning 85%; overflow wajib sebelum ${highestZone?.zone ?? "zona"} menyentuh 92%.`,
+    };
+    if (key === "replenishment") return {
+      ...defaultFields,
+      adaptiveVariant: pickface === null ? "replenishment-evidence-recovery" : "replenishment-next-wave",
+      title: pickface === null ? "Replenishment Evidence Recovery" : "Next-Wave Pickface Readiness",
+      whyNow: pickface === null ? "Replenishment breach tersedia tetapi Pick-to-PF tidak dilacak; hubungan ke picking belum boleh diasumsikan." : `Replenishment perlu dikaitkan langsung ke Pick-to-PF ${formatPct(pickface)} dan next-wave demand.`,
+      trigger: "Aktif ketika completion <92% atau shortage next-wave naik dua cut.",
+    };
+    if (key === "troubleshoot") return {
+      ...defaultFields,
+      adaptiveVariant: (dcc ?? 100) < 95 ? "troubleshoot-sloc-recovery" : "troubleshoot-aging-queue",
+      title: (dcc ?? 100) < 95 ? "SLOC-to-FR Recovery Engine" : "Troubleshoot Aging Queue Control",
+      whyNow: `Troubleshoot FR ${formatPct(troubleshoot)}${dcc === null ? "" : ` dan DCC ${formatPct(dcc)}`}; mandays role belum tersedia sehingga staffing tetap hipotesis.`,
+      trigger: "Aktif ketika FR <85%; perubahan MP baru boleh diuji setelah arrival rate dan aging tersedia.",
+    };
+    if (key === "dcc") return {
+      ...defaultFields,
+      adaptiveVariant: (troubleshoot ?? 100) < 85 ? "dcc-sloc-fr-loop" : "dcc-repeat-offender",
+      title: (troubleshoot ?? 100) < 85 ? "SLOC-to-FR Closed Loop" : "Risk-Based DCC Repeat-Offender Sprint",
+      whyNow: `DCC ${formatPct(dcc)}${troubleshoot === null ? "" : ` dan troubleshoot FR ${formatPct(troubleshoot)}`} menentukan prioritas SLOC yang paling merusak service.`,
+    };
+    if (key === "fleet") return { ...defaultFields, adaptiveVariant: "fleet-owner-split", title: "Dispatch-to-Hub Ownership Split", whyNow: `Demand downstream harus dipisahkan dari completion warehouse; demand tidak terlayani saat ini ${economics.unservedDemandQty?.toLocaleString("id-ID") ?? "n/a"} unit.` };
+    return defaultFields;
+  };
   const selected = pains.slice(0, 4).flatMap((pain) => {
     const key = pain.id.split("-").at(-1) ?? "productivity";
     const template = templates[key];
     if (!template) return [];
-    const supportingRelationship = relationships.find((item) => (item.driverDomain === pain.domain || item.outcomeDomain === pain.domain) && item.strength !== "insufficient");
+    const adaptation = adaptive(key, pain);
+    const supportingRelationship = relationships.find((item) =>
+      (item.driverDomain === pain.domain || item.outcomeDomain === pain.domain)
+      && item.survivesMultiplicity
+      && !item.sharedTerm
+      && item.alignment !== "inconclusive");
     const relationshipBonus = supportingRelationship?.strength === "strong" ? 8 : supportingRelationship?.strength === "moderate" ? 4 : 0;
     const priorityBreakdown = {
       impact: pain.impactScore,
@@ -479,6 +622,7 @@ function buildInitiatives(warehouse: string, pains: PainPoint[], relationships: 
     const priorityScore = Math.round(priorityBreakdown.impact * 0.45 + priorityBreakdown.recurrence * 0.25 + priorityBreakdown.evidence * 0.2 + priorityBreakdown.feasibility * 0.1);
     return [{
       ...template,
+      ...adaptation,
       ...controls[key],
       id: `${warehouse}-${key}-initiative`,
       warehouse,
@@ -491,6 +635,7 @@ function buildInitiatives(warehouse: string, pains: PainPoint[], relationships: 
   });
   const fallbacks = ["forecast", "productivity"].filter((key) => !selected.some((item) => item.id.includes(`-${key}-`))).map((key) => ({
     ...templates[key],
+    ...adaptive(key, null),
     ...controls[key],
     id: `${warehouse}-${key}-initiative`,
     warehouse,
@@ -609,6 +754,79 @@ function pivotMetrics(points: MetricPoint[], current: Window, previous: Window, 
       movement,
     } satisfies PivotMetricRow;
   }).sort((a, b) => a.division.localeCompare(b.division) || a.role.localeCompare(b.role) || a.metric.localeCompare(b.metric));
+}
+
+function metricSemanticCatalog(points: MetricPoint[], current: Window): OperationalMetricSemantic[] {
+  const catalog = new Map<string, {
+    division: string;
+    role: string;
+    remarks: string;
+    metric: string;
+    detail: string;
+    activeDates: Set<string>;
+  }>();
+  for (const point of points) {
+    const id = `${normalizeLabel(point.division)}|${normalizeLabel(point.role)}|${normalizeLabel(point.metric)}|${normalizeLabel(point.remarks)}`;
+    const existing = catalog.get(id) ?? {
+      division: point.division,
+      role: point.role,
+      remarks: point.remarks,
+      metric: point.metric,
+      detail: point.detail,
+      activeDates: new Set<string>(),
+    };
+    if (!existing.detail && point.detail) existing.detail = point.detail;
+    if (point.quality === "valid" && point.value !== null && point.date >= current.start && point.date <= current.end) existing.activeDates.add(point.date);
+    catalog.set(id, existing);
+  }
+  for (const item of OPERATION_GLOSSARY) {
+    const division = canonicalDivision(item.division);
+    const id = `${normalizeLabel(division)}|${normalizeLabel(item.role)}|${normalizeLabel(item.metric)}|${normalizeLabel(item.remarks)}`;
+    if (!catalog.has(id)) catalog.set(id, {
+      division,
+      role: item.role,
+      remarks: item.remarks,
+      metric: item.metric,
+      detail: item.details,
+      activeDates: new Set<string>(),
+    });
+  }
+  return [...catalog.values()]
+    .map((item) => buildMetricSemantic({
+      division: canonicalDivision(item.division),
+      role: item.role,
+      remarks: item.remarks,
+      metric: item.metric,
+      detail: item.detail,
+      activeCoverage: Math.min(1, item.activeDates.size / current.days),
+    }))
+    .sort((a, b) => a.division.localeCompare(b.division) || a.role.localeCompare(b.role) || a.metric.localeCompare(b.metric));
+}
+
+function intelligenceSummary(catalog: OperationalMetricSemantic[]): IntelligenceSummary {
+  const domains = [...new Set(catalog.map((item) => item.division))].sort().map((domain) => {
+    const metrics = catalog.filter((item) => item.division === domain);
+    const active = metrics.filter((item) => item.activeCoverage > 0);
+    return {
+      domain,
+      totalMetrics: metrics.length,
+      activeMetrics: active.length,
+      decisionReadyMetrics: metrics.filter((item) => item.readiness === "decision_ready").length,
+      activeCoveragePct: metrics.length ? Math.round(active.reduce((sum, item) => sum + item.activeCoverage, 0) / metrics.length * 100) : 0,
+    };
+  });
+  const semanticallyUsable = catalog.filter((item) => item.readiness !== "unconfirmed" && (item.detail.trim() || item.family !== "other")).length;
+  return {
+    sourceMetrics: catalog.length,
+    activeMetrics: catalog.filter((item) => item.activeCoverage > 0).length,
+    decisionReadyMetrics: catalog.filter((item) => item.readiness === "decision_ready").length,
+    diagnosticMetrics: catalog.filter((item) => item.readiness === "diagnostic_only").length,
+    observationalMetrics: catalog.filter((item) => item.readiness === "observational").length,
+    unconfirmedMetrics: catalog.filter((item) => item.readiness === "unconfirmed").length,
+    semanticCoveragePct: catalog.length ? Math.round(semanticallyUsable / catalog.length * 100) : 0,
+    domains,
+    operatingRules: OPERATING_RULES,
+  };
 }
 
 /**
@@ -808,14 +1026,13 @@ function relationshipSignals(points: MetricPoint[], asOf: string, skipDates: Set
     { id: "forecast-productivity", driverKey: "forecast_error", driverLabel: "Forecast error", outcomeKey: "productivity_attainment", outcomeLabel: "Picker productivity", driverDomain: "Planning", outcomeDomain: "Outbound", lagDays: 0, expectedSign: -1, sharedTerm: "Outbound qty requested (ada di kedua sisi)", decision: "Gunakan flex labor saat forecast error bergerak bersama productivity dilution." },
     { id: "mandays-productivity", driverKey: "mandays_variance", driverLabel: "Mandays variance", outcomeKey: "productivity_attainment", outcomeLabel: "Picker productivity", driverDomain: "Personalia", outcomeDomain: "Outbound", lagDays: 0, expectedSign: -1, sharedTerm: "Actual mandays picker (penyebut produktivitas, pembilang variance)", decision: "Pisahkan excess mandays dari process loss sebelum mengubah budget." },
     { id: "attendance-sla", driverKey: "attendance_all", driverLabel: "Attendance", outcomeKey: "sla_checker_inbound", outcomeLabel: "Inbound SLA", driverDomain: "Personalia", outcomeDomain: "Inbound", lagDays: 0, expectedSign: 1, sharedTerm: null, decision: "Gunakan attendance sebagai early warning SLA, bukan alasan tunggal menambah MP." },
-    { id: "schedule-productivity", driverKey: "schedule_accuracy", driverLabel: "Schedule accuracy", outcomeKey: "productivity_attainment", outcomeLabel: "Picker productivity", driverDomain: "Personalia", outcomeDomain: "Outbound", lagDays: 0, expectedSign: 1, sharedTerm: null, decision: "Koreksi mismatch schedule pada hari dengan productivity loss yang berulang." },
     { id: "dcc-pickface", driverKey: "dcc_accuracy", driverLabel: "DCC accuracy", outcomeKey: "pick_to_pf", outcomeLabel: "Pick to PF", driverDomain: "Inventory", outcomeDomain: "Outbound", lagDays: 1, expectedSign: 1, sharedTerm: null, decision: "Prioritaskan SLOC correction bila accuracy hari ini terkait pickface availability besok." },
     { id: "replenish-pickface", driverKey: "replenishment_completion", driverLabel: "Replenishment completion", outcomeKey: "pick_to_pf", outcomeLabel: "Pick to PF", driverDomain: "Inventory", outcomeDomain: "Outbound", lagDays: 1, expectedSign: 1, sharedTerm: null, decision: "Sinkronkan replenishment cut-off dengan kebutuhan picking H+1." },
     { id: "troubleshoot-fr", driverKey: "troubleshoot_fr", driverLabel: "Troubleshoot FR", outcomeKey: "fulfillment_rate", outcomeLabel: "Warehouse FR", driverDomain: "Inventory", outcomeDomain: "Service", lagDays: 0, expectedSign: 1, sharedTerm: null, decision: "Alokasikan recovery berdasarkan contribution-to-FR, aging, dan value-at-risk." },
     { id: "cancel-productivity", driverKey: "cancel_rate", driverLabel: "Cancel rate", outcomeKey: "productivity_attainment", outcomeLabel: "Picker productivity", driverDomain: "Planning", outcomeDomain: "Outbound", lagDays: 0, expectedSign: -1, sharedTerm: "Outbound qty requested (penyebut cancel rate, pembilang produktivitas)", decision: "Wajibkan capacity proof bila cancel naik tetapi productivity tidak ikut pulih." },
     { id: "capacity-productivity", driverKey: "capacity_pressure", driverLabel: "Capacity pressure >85%", outcomeKey: "productivity_attainment", outcomeLabel: "Picker productivity", driverDomain: "Capacity", outcomeDomain: "Outbound", lagDays: 0, expectedSign: -1, sharedTerm: null, decision: "Aktifkan overflow playbook sebelum congestion menekan output per manday." },
   ];
-  // Nine hypotheses x four warehouses is the family the correction has to cover.
+  // Eight hypotheses x four warehouses is the family the correction has to cover.
   const bonferroni = 0.05 / (definitions.length * PRIORITY_WAREHOUSES.length);
   const dates = Array.from({ length: 84 }, (_, index) => shiftIso(asOf, index - 83)).filter((date) => !skipDates.has(date));
 
@@ -864,7 +1081,9 @@ function relationshipSignals(points: MetricPoint[], asOf: string, skipDates: Set
 function riskMatrix(points: MetricPoint[], asOf: string): RiskMatrix {
   const definitions = [
     { domain: "Planning", keys: ["forecast_accuracy", "inbound_forecast_accuracy"] },
-    { domain: "People", keys: ["attendance_all", "churn_all", "schedule_accuracy"] },
+    // schedule_accuracy is deliberately excluded: the source definition remains
+    // unconfirmed and values can exceed 100%, so it must not shape risk or action.
+    { domain: "People", keys: ["attendance_all", "churn_all"] },
     { domain: "Inbound", keys: ["inbound_productivity_attainment", "sla_checker_inbound", "inbound_capacity_utilization"] },
     { domain: "Inventory", keys: ["putaway_productivity_attainment", "dcc_accuracy", "troubleshoot_fr", "replenishment_completion"] },
     { domain: "Outbound", keys: ["productivity_attainment", "fulfillment_rate", "cancel_rate", "pick_to_pf"] },
@@ -906,7 +1125,7 @@ function decisionInsights(
   const insights: DecisionInsight[] = [];
   const add = (insight: DecisionInsight) => insights.push(insight);
   const pct = (number: number | null) => number === null ? "n/a" : `${number.toFixed(1)}%`;
-  const strongest = relationships.find((item) => item.strength !== "insufficient" && item.confidence !== "low");
+  const strongest = relationships.find((item) => item.survivesMultiplicity && !item.sharedTerm && item.alignment !== "inconclusive");
 
   const mandays = value("mandays_variance");
   const productivity = value("productivity_attainment");
@@ -1007,7 +1226,11 @@ function decisionInsights(
   const pickface = value("pick_to_pf");
   const inventoryBreaches = [dcc !== null && dcc < 98, troubleshoot !== null && troubleshoot < 90, pickface !== null && pickface < 85].filter(Boolean).length;
   if (inventoryBreaches >= 2) {
-    const relationship = relationships.find((item) => ["dcc-pickface", "replenish-pickface", "troubleshoot-fr"].includes(item.id) && item.strength !== "insufficient");
+    const relationship = relationships.find((item) =>
+      ["dcc-pickface", "replenish-pickface", "troubleshoot-fr"].includes(item.id)
+      && item.survivesMultiplicity
+      && !item.sharedTerm
+      && item.alignment !== "inconclusive");
     add({
       id: "inventory-service-chain",
       priority: inventoryBreaches === 3 ? "critical" : "high",
@@ -1143,6 +1366,190 @@ function operationsEconomics(points: MetricPoint[], current: Window, previous: W
   };
 }
 
+function causalChains(
+  points: MetricPoint[],
+  current: Window,
+  kpis: MetricReading[],
+  zones: CapacityZone[],
+  relationships: RelationshipSignal[],
+  economics: OperationsEconomics,
+  pains: PainPoint[],
+): CausalChain[] {
+  const kpi = (key: string) => kpis.find((item) => item.key === key)?.value ?? null;
+  const value = (key: string, mode: AggregationMode = "average") => normalizePercent(key, metricValue(points, key, current, mode).value);
+  const raw = (key: string, mode: AggregationMode = "sum") => metricValue(points, key, current, mode).value;
+  const format = (item: number | null, suffix = "") => item === null ? "n/a" : `${item.toLocaleString("id-ID", { maximumFractionDigits: 1 })}${suffix}`;
+  const painIds = (...tokens: string[]) => pains.filter((pain) => tokens.some((token) => normalizeLabel(`${pain.domain} ${pain.title}`).includes(normalizeLabel(token)))).map((pain) => pain.id);
+  const statisticallySupported = (...ids: string[]) => relationships.find((item) => ids.includes(item.id) && item.survivesMultiplicity && !item.sharedTerm && item.alignment !== "inconclusive");
+  const chains: CausalChain[] = [];
+
+  const forecastAccuracy = kpi("forecast_accuracy");
+  const productivity = kpi("productivity_attainment");
+  const demandFill = kpi("demand_fill_rate");
+  const cancel = kpi("cancel_rate");
+  const forecast = raw("forecast_weekly_outbound");
+  const demandBeforeCancel = economics.requestedQty;
+  const volumeLaborState: CausalChain["state"] = forecastAccuracy === null || productivity === null || economics.actualMandays === null
+    ? "blocked"
+    : (forecastAccuracy < 85 || forecastAccuracy > 115) && productivity < 100 ? "supported" : "hypothesis";
+  chains.push({
+    id: "forecast-labor-productivity",
+    priorityScore: Math.round(clamp((forecastAccuracy === null ? 20 : Math.abs(100 - forecastAccuracy) * 2.2) + (productivity === null ? 15 : Math.max(0, 100 - productivity) * 1.8) + 28)),
+    title: "Forecast → manpower plan → produktivitas actual",
+    domain: "Planning + Labor",
+    state: volumeLaborState,
+    confidence: volumeLaborState === "supported" ? "medium" : "low",
+    cause: "Workload aktual bergerak berbeda dari forecast yang dipakai untuk menyiapkan manpower.",
+    mechanism: ["Forecast membentuk MPP dan budget mandays", "Actual volume menjadi numerator produktivitas", "Fixed mandays pada volume rendah menciptakan dilution; volume tinggi menciptakan overload"],
+    outcome: "Produktivitas, SLA, dan kebutuhan flex manpower dapat bergerak berlawanan bila volume band tidak dikontrol.",
+    evidence: [`Demand awal ${format(demandBeforeCancel)} vs forecast ${format(forecast)} (${format(forecastAccuracy, "%")}).`, `Actual mandays ${format(economics.actualMandays)} vs budget ${format(economics.budgetMandays)}.`, `Productivity attainment ${format(productivity, "%")}.`],
+    counterEvidence: productivity !== null && productivity >= 100 ? ["Produktivitas masih mencapai target; variance forecast belum terbukti menjadi process loss pada window ini."] : [],
+    missingEvidence: ["Hourly workload dan remaining hours", "Alokasi MP per shift/role", "Skill mix regular vs OJT"],
+    recommendedAction: forecastAccuracy !== null && forecastAccuracy < 90
+      ? "Rebaseline staffing per volume band dan weekday; redeploy flex pool hanya setelah remaining workload terukur."
+      : "Backtest bias forecast per weekday dan aktifkan flex trigger ketika actual keluar dari band ±10%.",
+    linkedPainIds: painIds("forecast", "productivity", "personalia"),
+  });
+
+  const cancelState: CausalChain["state"] = cancel === null || demandFill === null ? "blocked" : cancel > 2 && demandFill < 97 ? "verified" : cancel > 2 ? "supported" : "hypothesis";
+  chains.push({
+    id: "cancel-demand-service",
+    priorityScore: Math.round(clamp((cancel ?? 0) * 2.5 + Math.max(0, 97 - (demandFill ?? 97)) * 3 + 35)),
+    title: "Request awal → cancel → eksekusi → demand terlayani",
+    domain: "Outbound + Service",
+    state: cancelState,
+    confidence: cancelState === "verified" ? "high" : cancelState === "supported" ? "medium" : "low",
+    cause: "Sebagian request dikeluarkan sebelum eksekusi warehouse selesai dinilai.",
+    mechanism: ["Cancel menurunkan demand yang masuk ke denominator fulfillment", "Mandays yang sudah hadir tetap menjadi cost", "Fulfillment post-cancel dapat naik sementara demand fill tetap turun"],
+    outcome: "Service terlihat sehat pada denominator setelah cancel walau demand awal tidak terselesaikan.",
+    evidence: [`Cancel ${format(cancel, "%")} atau ${format(economics.cancelledQty)} unit.`, `Demand fill sebelum cancel ${format(demandFill, "%")}.`, `Demand tidak terlayani ${format(economics.unservedDemandQty)} unit.`],
+    counterEvidence: economics.capacityHeadroomPct !== null && economics.capacityHeadroomPct < 8 ? ["Headroom zona <8%; sebagian cancel mungkin berasal dari constraint capacity nyata."] : [],
+    missingEvidence: ["Reason code cancel", "Remaining hours saat approval", "Projected run-rate dan constrained process"],
+    recommendedAction: cancel !== null && cancel >= 20
+      ? "Aktifkan war room demand protection: reason-code wajib, capacity proof per jam, dan approval head untuk cancel tambahan."
+      : "Terapkan challenge gate sebelum cancel dengan remaining volume, run-rate, attendance, dan headroom zona.",
+    linkedPainIds: painIds("cancel", "outbound"),
+  });
+
+  const dcc = kpi("dcc_accuracy");
+  const replenish = value("replenishment_completion");
+  const troubleshoot = kpi("troubleshoot_fr");
+  const pickface = kpi("pick_to_pf");
+  const inventoryFailures = [dcc !== null && dcc < 95, replenish !== null && replenish < 92, troubleshoot !== null && troubleshoot < 85, pickface !== null && pickface < 80].filter(Boolean).length;
+  const inventoryAssociation = statisticallySupported("dcc-pickface", "replenish-pickface", "troubleshoot-fr");
+  const inventoryState: CausalChain["state"] = [dcc, replenish, troubleshoot, pickface].filter((item) => item !== null).length < 2 ? "blocked" : inventoryFailures >= 2 ? "supported" : "hypothesis";
+  chains.push({
+    id: "inventory-sloc-service",
+    priorityScore: Math.round(clamp(25 + inventoryFailures * 18 + (inventoryAssociation ? 12 : 0))),
+    title: "SLOC → replenish → troubleshoot → picking",
+    domain: "Inventory + Outbound",
+    state: inventoryState,
+    confidence: inventoryState === "supported" && inventoryAssociation ? "high" : inventoryState === "supported" ? "medium" : "low",
+    cause: "Readiness dan akurasi lokasi menentukan apakah picker menemukan stok di pickface.",
+    mechanism: ["SLOC tidak akurat menciptakan shortage semu atau task lost", "Replenishment terlambat memindahkan picking keluar pickface", "Troubleshoot menyerap recovery work sebelum SO dapat dipenuhi"],
+    outcome: "Travel, rework, Pick-to-Lost, productivity, dan fulfillment bergerak sebagai satu loss chain.",
+    evidence: [`DCC ${format(dcc, "%")}; replenish ${format(replenish, "%")}.`, `Troubleshoot FR ${format(troubleshoot, "%")}; Pick-to-PF ${format(pickface, "%")}.`, ...(inventoryAssociation ? [inventoryAssociation.narrative] : [])],
+    counterEvidence: inventoryFailures === 0 ? ["Metric inventory yang tersedia belum menembus guardrail pada window ini."] : [],
+    missingEvidence: ["SLOC repeat offender per SKU", "Aging replenish dan troubleshoot", ...(raw("actual_picker_mandays") === null ? ["Actual mandays picker"] : [])],
+    recommendedAction: inventoryFailures >= 2
+      ? "Buat loss tree per SLOC: repeat offender DCC, next-wave replenish, aging troubleshoot, lalu ukur efek H+1 pada Pick-to-PF dan FR."
+      : "Validasi missing coverage dan jalankan sampling SLOC sebelum menyimpulkan penyebab produktivitas.",
+    linkedPainIds: painIds("dcc", "replenish", "troubleshoot", "inventory"),
+  });
+
+  const checkerBudget = raw("budget_checker_mandays");
+  const checkerActual = raw("actual_checker_mandays");
+  const checkerSla = kpi("sla_checker_inbound");
+  const checkerProductivity = normalizePercent("inbound_productivity_attainment", derived(points, "inbound_productivity_attainment", current).value);
+  const checkerState: CausalChain["state"] = checkerBudget === null || checkerActual === null || checkerSla === null ? "blocked"
+    : checkerActual < checkerBudget && checkerSla < 98 ? "supported" : "hypothesis";
+  chains.push({
+    id: "checker-labor-sla",
+    priorityScore: Math.round(clamp(30 + Math.max(0, 98 - (checkerSla ?? 98)) * 3 + Math.max(0, 100 - (checkerProductivity ?? 100)) * 1.2)),
+    title: "Checker manpower → lead time → inbound SLA",
+    domain: "Inbound + Labor",
+    state: checkerState,
+    confidence: checkerState === "supported" ? "medium" : "low",
+    cause: "Checker capacity dan workload aktual menentukan lead time penerimaan.",
+    mechanism: ["Kurang MP menambah queue dan lead time", "Lebih banyak MP memberi SLA buffer", "Overstaff pada volume rendah dapat menurunkan output per manday"],
+    outcome: "SLA dan productivity harus dioptimalkan sebagai pasangan, bukan secara terpisah.",
+    evidence: [`Checker actual MD ${format(checkerActual)} vs budget ${format(checkerBudget)}.`, `Inbound SLA ${format(checkerSla, "%")}; productivity attainment ${format(checkerProductivity, "%")}.`],
+    counterEvidence: checkerSla !== null && checkerSla >= 98 ? ["SLA checker masih memenuhi guardrail pada cut aktif."] : [],
+    missingEvidence: ["Arrival curve PO per jam", "Lead time checker per batch", "Attendance checker aktual"],
+    recommendedAction: "Bandingkan staffing pada volume band dan arrival curve yang sama; ubah MP hanya di jam constraint, lalu ukur respons SLA dan productivity.",
+    linkedPainIds: painIds("personalia", "inbound"),
+  });
+
+  const constrainedZone = [...zones].filter((zone) => zone.utilization !== null).sort((a, b) => (b.utilization ?? 0) - (a.utilization ?? 0))[0];
+  const capacityState: CausalChain["state"] = !constrainedZone ? "blocked" : (constrainedZone.utilization ?? 0) >= 85 ? "verified" : "hypothesis";
+  chains.push({
+    id: "zone-capacity-flow",
+    priorityScore: Math.round(clamp(25 + Math.max(0, (constrainedZone?.utilization ?? 70) - 75) * 2.5)),
+    title: `${constrainedZone?.zone ?? "Zonal"} capacity → congestion → throughput`,
+    domain: "Capacity + Flow",
+    state: capacityState,
+    confidence: capacityState === "verified" ? "high" : capacityState === "blocked" ? "low" : "medium",
+    cause: "Constraint lokal di satu zona dapat tersembunyi oleh rata-rata kapasitas warehouse.",
+    mechanism: ["Occupancy tinggi mengurangi ruang staging/putaway", "Congestion menambah travel dan queue", "Tambahan MP atau volume memberi diminishing return dekat batas kapasitas"],
+    outcome: "Putaway SLA, replenishment, dan outbound throughput dapat turun bersamaan.",
+    evidence: constrainedZone ? [`${constrainedZone.zone} ${format(constrainedZone.utilization, "%")} (${format(constrainedZone.actual)} / ${format(constrainedZone.maximum)}).`] : ["Actual atau max capacity zona belum tersedia."],
+    counterEvidence: constrainedZone && (constrainedZone.utilization ?? 100) < 85 ? ["Seluruh zona yang tersedia masih di bawah warning envelope 85%."] : [],
+    missingEvidence: ["H+3 projection per zona", "Slot/staging queue", "Overflow capacity yang benar-benar tersedia"],
+    recommendedAction: constrainedZone && (constrainedZone.utilization ?? 0) >= 85
+      ? `Aktifkan projection dan overflow playbook ${constrainedZone.zone}; jangan menambah volume sebelum headroom kembali aman.`
+      : "Pertahankan zonal warning dan validasi max capacity setiap perubahan layout.",
+    linkedPainIds: painIds("capacity"),
+  });
+
+  const rts = economics.servedQty;
+  const hub = raw("outbound_actual_hub");
+  const dispatch = value("on_time_dispatch");
+  const arrival = value("on_time_arrival");
+  const downstreamLoss = rts !== null && hub !== null ? Math.max(0, rts - hub) : null;
+  const fleetState: CausalChain["state"] = rts === null || hub === null ? "blocked" : downstreamLoss !== null && downstreamLoss > 0 ? "verified" : "hypothesis";
+  chains.push({
+    id: "warehouse-fleet-hub",
+    priorityScore: Math.round(clamp(25 + (downstreamLoss !== null && rts ? downstreamLoss / rts * 300 : 0) + Math.max(0, 95 - (dispatch ?? 95)) * 1.5)),
+    title: "RTS → dispatch → arrival → hub received",
+    domain: "Warehouse + Fleet",
+    state: fleetState,
+    confidence: fleetState === "verified" ? "high" : fleetState === "blocked" ? "low" : "medium",
+    cause: "Barang yang selesai di warehouse masih dapat kehilangan service pada handoff dan perjalanan fleet.",
+    mechanism: ["RTS menandai completion warehouse", "Dispatch/departure menandai kesiapan fleet", "Hub received menutup service downstream"],
+    outcome: "Gap downstream tidak boleh otomatis dibebankan ke productivity atau fulfillment warehouse.",
+    evidence: [`RTS ${format(rts)}; hub received ${format(hub)}; gap ${format(downstreamLoss)}.`, `On-time dispatch ${format(dispatch, "%")}; arrival ${format(arrival, "%")}.`],
+    counterEvidence: downstreamLoss === 0 ? ["Tidak ada gap kuantitas antara RTS dan hub pada window ini."] : [],
+    missingEvidence: ["Delay ownership per route", "Cut-off departure", "Exception/fleet adjustment reason"],
+    recommendedAction: "Pisahkan owner delay warehouse vs fleet per route dan ukur recovery dari dispatch sampai hub received.",
+    linkedPainIds: painIds("fleet"),
+  });
+
+  const wastage = raw("total_wastage");
+  const gmv = raw("gmv");
+  if (wastage !== null || gmv !== null) {
+    const wastageRate = wastage !== null && gmv !== null && gmv > 0 ? wastage / gmv * 100 : null;
+    chains.push({
+      id: "quality-wastage-value",
+      priorityScore: Math.round(clamp(20 + (wastageRate ?? 0) * 20)),
+      title: "Quality loss → wastage → GMV exposure",
+      domain: "Quality + Cost",
+      state: wastageRate === null ? "blocked" : "verified",
+      confidence: wastageRate === null ? "low" : "high",
+      cause: "Handling, expired, inbound-to-bad, dan penyebab lain mengubah loss operasional menjadi nilai bisnis.",
+      mechanism: ["QC/QM mengidentifikasi sumber loss", "Qty/value wastage membentuk exposure", "% to GMV menormalkan materialitas terhadap skala bisnis"],
+      outcome: "Prioritas quality dapat dinilai dari nilai dan run-rate, bukan hanya jumlah kasus.",
+      evidence: [`Total wastage ${format(wastage)}; GMV ${format(gmv)}; rasio ${format(wastageRate, "%")}.`],
+      counterEvidence: [],
+      missingEvidence: wastageRate === null ? ["Denominator GMV terverifikasi", "Wastage by cause dan value"] : ["Wastage by cause dan owner"],
+      recommendedAction: "Pisahkan handling, expired, inbound-to-bad, dan others; prioritaskan Pareto value dengan guardrail % to GMV.",
+      linkedPainIds: [],
+    });
+  }
+
+  const stateRank: Record<CausalChain["state"], number> = { verified: 4, supported: 3, hypothesis: 2, blocked: 1 };
+  return chains.sort((a, b) => b.priorityScore - a.priorityScore || stateRank[b.state] - stateRank[a.state]).slice(0, 7);
+}
+
 export function buildAnalysis(
   dataset: OperationalDataset,
   warehouse: string,
@@ -1195,12 +1602,6 @@ export function buildAnalysis(
   if (!warehousePoints.some((point) => normalizeLabel(point.metric).includes("forecast") && normalizeLabel(point.metric).includes("relabel"))) dataWarnings.push("Forecast pcs relabel tidak tersedia; productivity relabel tidak boleh dinilai sebagai forecast attainment.");
   if (!warehousePoints.some((point) => normalizeLabel(point.role).includes("troubleshoot") && normalizeLabel(point.metric).includes("manday"))) dataWarnings.push("Mandays troubleshooter tidak tersedia; FR troubleshoot dapat dimonitor, tetapi dampak manpower belum dapat dibuktikan.");
 
-  const catalog = new Map<string, { division: string; role: string; metric: string; detail: string }>();
-  for (const point of warehousePoints) {
-    const key = `${normalizeLabel(point.division)}|${normalizeLabel(point.role)}|${normalizeLabel(point.metric)}`;
-    if (!catalog.has(key)) catalog.set(key, { division: point.division, role: point.role, metric: point.metric, detail: point.detail });
-  }
-
   const divisions = [...new Set(warehousePoints.map((point) => canonicalDivision(point.division)).filter(Boolean))].sort();
   const rolesByDivision: Record<string, string[]> = { All: [...new Set(warehousePoints.map((point) => point.role).filter(Boolean))].sort() };
   for (const item of divisions) rolesByDivision[item] = [...new Set(warehousePoints.filter((point) => canonicalDivision(point.division) === item).map((point) => point.role).filter(Boolean))].sort();
@@ -1208,6 +1609,10 @@ export function buildAnalysis(
   const zones = capacityZones(warehousePoints, current);
   for (const zone of zones) if (zone.note) dataWarnings.push(`Zona ${zone.zone}: ${zone.note}`);
   const relationships = relationshipSignals(warehousePoints, asOf, noOpsDates);
+  const economics = operationsEconomics(warehousePoints, current, previous, kpis, zones);
+  const chains = causalChains(warehousePoints, current, kpis, zones, relationships, economics, pains);
+  const semanticCatalog = metricSemanticCatalog(warehousePoints, current);
+  const intelligence = intelligenceSummary(semanticCatalog);
   const chartWindow = visualWindow(current, effectivePeriod);
   const sync = dataset.sync ?? {
     provider: dataset.sourceMode,
@@ -1261,8 +1666,9 @@ export function buildAnalysis(
     trends: activeTrendKeys.map((key) => dailyTrend(warehousePoints, key, chartWindow)),
     drivers: driverSignals(kpis),
     decisionInsights: decisionInsights(kpis, zones, pains, relationships),
+    causalChains: chains,
     painPoints: pains,
-    initiatives: buildInitiatives(warehouse, pains, relationships),
+    initiatives: buildInitiatives(warehouse, pains, relationships, kpis, zones, economics, chains),
     filters: {
       warehouses: ["PGS", "SRG", "BIT", "STR"],
       divisions,
@@ -1281,8 +1687,9 @@ export function buildAnalysis(
     riskMatrix: riskMatrix(warehousePoints, asOf),
     pivotRows: pivotMetrics(warehousePoints, current, previous, division, role),
     warehouseComparison: warehouseComparison(dataset, effectivePeriod, asOf, current.days),
-    metricCatalog: [...catalog.values()].sort((a, b) => a.division.localeCompare(b.division) || a.role.localeCompare(b.role) || a.metric.localeCompare(b.metric)),
-    economics: operationsEconomics(warehousePoints, current, previous, kpis, zones),
+    metricCatalog: semanticCatalog,
+    intelligence,
+    economics,
   };
 }
 

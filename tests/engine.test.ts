@@ -44,7 +44,9 @@ describe("analysis engine", () => {
 
   it("derives forecast accuracy and cancellation from connected metrics", () => {
     const output = buildAnalysis(dataset(baselinePoints()), "PGS", "weekly");
-    expect(output.kpis.find((item) => item.key === "forecast_accuracy")?.value).toBe(90);
+    // Forecast accuracy uses original demand before cancellation. Cancelling
+    // requests is an execution decision and must not rewrite planning quality.
+    expect(output.kpis.find((item) => item.key === "forecast_accuracy")?.value).toBe(95);
     expect(output.kpis.find((item) => item.key === "cancel_rate")?.value).toBeCloseTo(5.263, 2);
     expect(output.initiatives.length).toBeGreaterThanOrEqual(2);
     expect(output.functionalModules).toHaveLength(5);
@@ -54,7 +56,7 @@ describe("analysis engine", () => {
     expect(output.fulfillmentFunnel.map((item) => item.key)).toEqual(["forecast", "before-cancel", "after-cancel", "rts", "hub"]);
     expect(output.laborBalance).toHaveLength(28);
     expect(output.capacityHistory).toHaveLength(28);
-    expect(output.relationshipSignals).toHaveLength(9);
+    expect(output.relationshipSignals).toHaveLength(8);
     expect(output.riskMatrix.rows).toHaveLength(7);
     expect(output.riskMatrix.weeks).toHaveLength(8);
     expect(output.decisionInsights.some((item) => item.id === "cancel-not-recovering-productivity")).toBe(true);
@@ -62,6 +64,11 @@ describe("analysis engine", () => {
     expect(output.economics.verdict).toBe("false_economy");
     expect(output.economics.costToServeMdPerThousand).toBeGreaterThan(0);
     expect(output.initiatives.every((item) => item.successGate && item.stopLoss && item.priorityBreakdown)).toBe(true);
+    expect(output.initiatives.every((item) => item.adaptiveVariant && item.whyNow && item.trigger)).toBe(true);
+    expect(output.causalChains.length).toBeGreaterThanOrEqual(5);
+    expect(output.causalChains.some((item) => item.id === "cancel-demand-service" && item.state === "verified")).toBe(true);
+    expect(output.intelligence.sourceMetrics).toBeGreaterThan(0);
+    expect(output.metricCatalog.every((item) => item.readiness && item.decisionRole && item.family)).toBe(true);
   });
 
   it("supports a flexible custom window with an equal-length comparison", () => {
@@ -94,6 +101,20 @@ describe("analysis engine", () => {
     const output = buildAnalysis(dataset(relaxed), "PGS", "weekly");
     expect(output.kpis.find((item) => item.key === "cancel_rate")?.value).toBeGreaterThan(5.263);
     expect(output.kpis.find((item) => item.key === "demand_fill_rate")?.value).toBeCloseTo((shipped / 95) * 100, 1);
+    expect(output.kpis.find((item) => item.key === "forecast_accuracy")?.value).toBe(95);
+  });
+
+  it("keeps unconfirmed metrics visible but out of decision readiness", () => {
+    const points = baselinePoints();
+    points.push(point("2026-07-26", "Schedule Accuracy %", 0.62, "Personalia"));
+    points.push(point("2026-07-26", "MP Recommendation All Division", 13, "Personalia"));
+    const output = buildAnalysis(dataset(points), "PGS", "weekly");
+    const schedule = output.metricCatalog.find((item) => item.metric === "Schedule Accuracy %");
+    const recommendation = output.metricCatalog.find((item) => item.metric === "MP Recommendation All Division");
+    expect(schedule?.readiness).toBe("unconfirmed");
+    expect(recommendation?.readiness).toBe("unconfirmed");
+    expect(output.relationshipSignals.some((item) => item.driverKey === "schedule_accuracy")).toBe(false);
+    expect(output.initiatives.every((item) => !item.whyNow.toLowerCase().includes("schedule accuracy"))).toBe(true);
   });
 
   it("a breaching KPI blocks the controlled status", () => {

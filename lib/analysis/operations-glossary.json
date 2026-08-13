@@ -1,0 +1,2099 @@
+[
+  {
+    "division": "Personalia",
+    "role": "All",
+    "remarks": "Non-BSC",
+    "metric": "Budgeted Slot MP",
+    "details": "Budget slot MP",
+    "explanation": "Keseluruhan budget Slot MP",
+    "notes": ""
+  },
+  {
+    "division": "Personalia",
+    "role": "All",
+    "remarks": "Non-BSC",
+    "metric": "Budgeted Mandays",
+    "details": "Budget mandays",
+    "explanation": "Keseluruhan budget Mandays MP",
+    "notes": ""
+  },
+  {
+    "division": "Personalia",
+    "role": "All",
+    "remarks": "Non-BSC",
+    "metric": "Current Available Slot MP",
+    "details": "Jumlah slot MP",
+    "explanation": "Slot MP yang ada saat ini",
+    "notes": ""
+  },
+  {
+    "division": "Personalia",
+    "role": "All",
+    "remarks": "Non-BSC",
+    "metric": "MP Fulfill Accuracy %",
+    "details": "Apakah slot MP sudah terfulfill",
+    "explanation": "% Fulfillment MP Available/Budgeted",
+    "notes": ""
+  },
+  {
+    "division": "Personalia",
+    "role": "All",
+    "remarks": "Non-BSC",
+    "metric": "Budget Mandays",
+    "details": "Budget mandays",
+    "explanation": "Budget Mandays",
+    "notes": ""
+  },
+  {
+    "division": "Personalia",
+    "role": "All",
+    "remarks": "Non-BSC",
+    "metric": "MP Recommendation All Division",
+    "details": "",
+    "explanation": "Rekomendasi MP yang dijadwalkan",
+    "notes": "Ini harus fitur advance"
+  },
+  {
+    "division": "Personalia",
+    "role": "All",
+    "remarks": "Non-BSC",
+    "metric": "Scheduled Mandays",
+    "details": "Mandays yang dijadwalkan masuk",
+    "explanation": "Mandays yang ter schedule",
+    "notes": ""
+  },
+  {
+    "division": "Personalia",
+    "role": "All",
+    "remarks": "Non-BSC",
+    "metric": "Schedule Accuracy %",
+    "details": "Apakah penjadwalan sudah tepat",
+    "explanation": "% Accuracy MP Scheduled/Budgeted Mandays",
+    "notes": ""
+  },
+  {
+    "division": "Personalia",
+    "role": "All",
+    "remarks": "Non-BSC",
+    "metric": "Mandays Daily Worker",
+    "details": "Jumlah daily worker per hari",
+    "explanation": "Daily Worker yang disewa",
+    "notes": "Ini diluar staff resmi"
+  },
+  {
+    "division": "Personalia",
+    "role": "Inbound",
+    "remarks": "Non-BSC",
+    "metric": "MP Recommendation Inbound",
+    "details": "",
+    "explanation": "Rekomendasi MP yang dijadwalkan",
+    "notes": "Ini harus fitur advance"
+  },
+  {
+    "division": "Personalia",
+    "role": "Inbound",
+    "remarks": "Non-BSC",
+    "metric": "Inbound Scheduled",
+    "details": "Mandays tim inbound yang dijadwalkan masuk",
+    "explanation": "MP Inbound yang ter schedule",
+    "notes": ""
+  },
+  {
+    "division": "Personalia",
+    "role": "Inbound",
+    "remarks": "Non-BSC",
+    "metric": "Inbound Attendance",
+    "details": "Mandays tim inbound yang masuk",
+    "explanation": "MP Inbound yang ter schedule dan masuk",
+    "notes": ""
+  },
+  {
+    "division": "Personalia",
+    "role": "Inbound",
+    "remarks": "Non-BSC",
+    "metric": "Inbound Attendance %",
+    "details": "Persentase tim inbound yang masuk vs dijadwalkan",
+    "explanation": "% Attendance masuk/schedule",
+    "notes": ""
+  },
+  {
+    "division": "Personalia",
+    "role": "Inbound",
+    "remarks": "BSC",
+    "metric": "Inbound Churn Rate %",
+    "details": "Persentase tim inbound yang resign",
+    "explanation": "% MP Inbound yang resign/Available Slot MP",
+    "notes": ""
+  },
+  {
+    "division": "Personalia",
+    "role": "Inventory",
+    "remarks": "Non-BSC",
+    "metric": "MP Recommendation Inventory",
+    "details": "",
+    "explanation": "Rekomendasi MP yang dijadwalkan",
+    "notes": "Ini harus fitur advance"
+  },
+  {
+    "division": "Personalia",
+    "role": "Inventory",
+    "remarks": "Non-BSC",
+    "metric": "Inventory Scheduled",
+    "details": "Mandays tim inventory yang dijadwalkan masuk",
+    "explanation": "MP Inventory yang ter schedule",
+    "notes": ""
+  },
+  {
+    "division": "Personalia",
+    "role": "Inventory",
+    "remarks": "Non-BSC",
+    "metric": "Inventory Attendance",
+    "details": "Mandays tim inventory yang masuk",
+    "explanation": "MP Inventory yang ter schedule dan masuk",
+    "notes": ""
+  },
+  {
+    "division": "Personalia",
+    "role": "Inventory",
+    "remarks": "Non-BSC",
+    "metric": "Inventory Attendance %",
+    "details": "Persentase tim inventory yang masuk vs dijadwalkan",
+    "explanation": "% Attendance masuk/schedule",
+    "notes": ""
+  },
+  {
+    "division": "Personalia",
+    "role": "Inventory",
+    "remarks": "BSC",
+    "metric": "Inventory Churn Rate %",
+    "details": "Persentase tim inventory yang resign",
+    "explanation": "% MP Inventory yang resign/Available Slot MP",
+    "notes": ""
+  },
+  {
+    "division": "Personalia",
+    "role": "Outbound",
+    "remarks": "Non-BSC",
+    "metric": "MP Recommendation Outbound",
+    "details": "",
+    "explanation": "Rekomendasi MP yang dijadwalkan",
+    "notes": "Ini harus fitur advance"
+  },
+  {
+    "division": "Personalia",
+    "role": "Outbound",
+    "remarks": "Non-BSC",
+    "metric": "Outbound Scheduled",
+    "details": "Mandays tim outbound yang dijadwalkan masuk",
+    "explanation": "MP Outbound yang ter schedule",
+    "notes": ""
+  },
+  {
+    "division": "Personalia",
+    "role": "Outbound",
+    "remarks": "Non-BSC",
+    "metric": "Outbound Attendance",
+    "details": "Mandays tim outbound yang masuk",
+    "explanation": "MP Outbound yang ter schedule dan masuk",
+    "notes": ""
+  },
+  {
+    "division": "Personalia",
+    "role": "Outbound",
+    "remarks": "Non-BSC",
+    "metric": "Outbound Attendance %",
+    "details": "Persentase tim outbound yang masuk vs dijadwalkan",
+    "explanation": "% Attendance masuk/schedule",
+    "notes": ""
+  },
+  {
+    "division": "Personalia",
+    "role": "Outbound",
+    "remarks": "BSC",
+    "metric": "Outbound Churn Rate %",
+    "details": "Persentase tim outbound yang resign",
+    "explanation": "% MP Outbound yang resign/Available Slot MP",
+    "notes": ""
+  },
+  {
+    "division": "Personalia",
+    "role": "All",
+    "remarks": "Non-BSC",
+    "metric": "All Attendance %",
+    "details": "Persentase kehadiran keseluruhan",
+    "explanation": "% All Attendance masuk/schedule",
+    "notes": ""
+  },
+  {
+    "division": "Personalia",
+    "role": "All",
+    "remarks": "Non-BSC",
+    "metric": "All Churn Rate %",
+    "details": "Persentase resign keseluruhan",
+    "explanation": "% All MP role yang resign/Available Slot MP",
+    "notes": ""
+  },
+  {
+    "division": "Inbound",
+    "role": "Inb-All",
+    "remarks": "Non-BSC",
+    "metric": "Forecast MPP Inbound",
+    "details": "Forecast yang digunakan saat MP planning",
+    "explanation": "Forecast Man Power Planning",
+    "notes": ""
+  },
+  {
+    "division": "Inbound",
+    "role": "Inb-All",
+    "remarks": "Non-BSC",
+    "metric": "Forecast Weekly Inbound",
+    "details": "Forecast yang disetujui oleh ops dan SC tiap weekly",
+    "explanation": "",
+    "notes": "SC = Supply Chain"
+  },
+  {
+    "division": "Inbound",
+    "role": "Inb-All",
+    "remarks": "Non-BSC",
+    "metric": "Qty Incoming Inbound",
+    "details": "Request qty PO (untuk akurasi)",
+    "explanation": "",
+    "notes": "PO = Purchase Order"
+  },
+  {
+    "division": "Inbound",
+    "role": "Inb-All",
+    "remarks": "Non-BSC",
+    "metric": "Qty Actual Inbound",
+    "details": "Actual qty PO (untuk productivity)",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inbound",
+    "role": "Inb-All",
+    "remarks": "Non-BSC",
+    "metric": "Qty Milkrun",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inbound",
+    "role": "Inb-All",
+    "remarks": "Non-BSC",
+    "metric": "Inbound Forecast Weekly Accuracy %",
+    "details": "Incoming per forecast weekly",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inbound",
+    "role": "Inb-All",
+    "remarks": "Non-BSC",
+    "metric": "Inbound Forecast MPP Accuracy %",
+    "details": "Incoming per forecast MPP",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inbound",
+    "role": "Inb-All",
+    "remarks": "Non-BSC",
+    "metric": "Max Inbound Capacity",
+    "details": "Kapasitas maksimum inbound",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inbound",
+    "role": "Inb-All",
+    "remarks": "Non-BSC",
+    "metric": "Inbound Utilization %",
+    "details": "Utilisasi kapasitas inbound",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inbound",
+    "role": "Inb-All",
+    "remarks": "BSC",
+    "metric": "PO Adjustment",
+    "details": "PO adjustment",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inbound",
+    "role": "Inb-All",
+    "remarks": "BSC",
+    "metric": "Inbound Audit",
+    "details": "Audit inbound (email bulanan ) dari Tim Mas Bina",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inbound",
+    "role": "Inb-Relable",
+    "remarks": "Non-BSC",
+    "metric": "Relable Qty",
+    "details": "Qty yang melalui proses relable",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inbound",
+    "role": "Inb-Relable",
+    "remarks": "Non-BSC",
+    "metric": "Relable % to Inbound",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inbound",
+    "role": "Inb-Relable",
+    "remarks": "Non-BSC",
+    "metric": "Relable Productivity Target",
+    "details": "Target productivity relable",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inbound",
+    "role": "Inb-Relable",
+    "remarks": "Non-BSC",
+    "metric": "Budget Mandays Relable",
+    "details": "Budget mandays tim relable",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inbound",
+    "role": "Inb-Relable",
+    "remarks": "Non-BSC",
+    "metric": "MP Recommendation Relable",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inbound",
+    "role": "Inb-Relable",
+    "remarks": "Non-BSC",
+    "metric": "Actual Mandays Relable",
+    "details": "Mandays tim relable",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inbound",
+    "role": "Inb-Relable",
+    "remarks": "Non-BSC",
+    "metric": "Relable Actual Productivity Collective",
+    "details": "Productivity kolektif tim relable",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inbound",
+    "role": "Inb-Relable",
+    "remarks": "Non-BSC",
+    "metric": "Productivity Collective Achievement %",
+    "details": "Pencapaian productivity kolektif tim relable",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inbound",
+    "role": "Inb-Relable",
+    "remarks": "Non-BSC",
+    "metric": "Productivity Collective Achievement Adjustment %",
+    "details": "Pencapaian productivity kolektif tim relable (adj.)",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inbound",
+    "role": "Inb-Checker",
+    "remarks": "BSC",
+    "metric": "SLA Checker Inbound Achievement",
+    "details": "SLA checker inbound",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inbound",
+    "role": "Inb-Checker",
+    "remarks": "Non-BSC",
+    "metric": "Checker Inbound Productivity Target",
+    "details": "Target productivity checker inbound",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inbound",
+    "role": "Inb-Checker",
+    "remarks": "Non-BSC",
+    "metric": "Budget Mandays Checker Inbound",
+    "details": "Budget mandays tim checker inbound",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inbound",
+    "role": "Inb-Checker",
+    "remarks": "Non-BSC",
+    "metric": "MP Recommendation Checker Inbound",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inbound",
+    "role": "Inb-Checker",
+    "remarks": "Non-BSC",
+    "metric": "Actual Mandays Checker Inbound",
+    "details": "Mandays tim checker inbound",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inbound",
+    "role": "Inb-Checker",
+    "remarks": "Non-BSC",
+    "metric": "Checker Inbound Actual Productivity Collective",
+    "details": "Productivity kolektif tim checker inbound",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inbound",
+    "role": "Inb-Checker",
+    "remarks": "Non-BSC",
+    "metric": "Productivity Avg Invidual Checker Inbound",
+    "details": "Avg productivity per MP",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inbound",
+    "role": "Inb-Checker",
+    "remarks": "BSC",
+    "metric": "Productivity Collective Achievement %",
+    "details": "Pencapaian productivity kolektif tim checker inbound",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inbound",
+    "role": "Inb-Checker",
+    "remarks": "BSC",
+    "metric": "Productivity Collective Achievement Adjustment%",
+    "details": "Pencapaian productivity kolektif tim checker inbound (adj.)",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inbound",
+    "role": "Inb-Checker",
+    "remarks": "Non-BSC",
+    "metric": "On Time",
+    "details": "Vendor on time",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inbound",
+    "role": "Inb-Checker",
+    "remarks": "Non-BSC",
+    "metric": "Late",
+    "details": "Vendor late",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inbound",
+    "role": "Inb-Checker",
+    "remarks": "Non-BSC",
+    "metric": "OTIF %",
+    "details": "Persentase vendor on time tiba di warehouse",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-Putaway",
+    "remarks": "Non-BSC",
+    "metric": "Forecast MPP Putaway",
+    "details": "Forecast yang digunakan saat MP planning",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-Putaway",
+    "remarks": "Non-BSC",
+    "metric": "Forecast Weekly Putaway",
+    "details": "Forecast yang disetujui oleh ops dan SC tiap weekly",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-Putaway",
+    "remarks": "Non-BSC",
+    "metric": "Putaway Actual",
+    "details": "Actual qty PO",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-Putaway",
+    "remarks": "Non-BSC",
+    "metric": "Putaway Done",
+    "details": "Qty yang selesai diproses tim putaway",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-Putaway",
+    "remarks": "Non-BSC",
+    "metric": "Putaway Forecast Weekly Accuracy %",
+    "details": "Incoming per forecast weekly",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-Putaway",
+    "remarks": "Non-BSC",
+    "metric": "Putaway Forecast MPP Accuracy %",
+    "details": "Incoming  per forecast MPP",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-Putaway",
+    "remarks": "Non-BSC",
+    "metric": "Putaway Completion %",
+    "details": "Persentase qty diproses dengan qty actual",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-Putaway",
+    "remarks": "Non-BSC",
+    "metric": "Putaway Suggestion Accuracy %",
+    "details": "Persentase akurasi lokasi tujuan putaway",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-Putaway",
+    "remarks": "Non-BSC",
+    "metric": "Max Putaway Capacity",
+    "details": "Kapasitas maksimum putaway",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-Putaway",
+    "remarks": "Non-BSC",
+    "metric": "Putaway Utilization %",
+    "details": "Utilisasi kapasitas putaway",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-Putaway",
+    "remarks": "Non-BSC",
+    "metric": "Putaway Productivity Target",
+    "details": "Target productivity putaway",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-Putaway",
+    "remarks": "Non-BSC",
+    "metric": "Budget Mandays Putaway",
+    "details": "Budget mandays tim putaway",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-Putaway",
+    "remarks": "Non-BSC",
+    "metric": "MP Recommendation Putaway",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-Putaway",
+    "remarks": "Non-BSC",
+    "metric": "Actual Mandays Putaway",
+    "details": "Mandays tim putaway",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-Putaway",
+    "remarks": "BSC",
+    "metric": "Putaway Actual Productivity Collective",
+    "details": "Productivity kolektif tim putaway",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-Putaway",
+    "remarks": "Non-BSC",
+    "metric": "Putaway Productivity",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-Putaway",
+    "remarks": "BSC",
+    "metric": "Productivity Collective Achievement %",
+    "details": "Pencapaian productivity kolektif tim putaway",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-Putaway",
+    "remarks": "Non-BSC",
+    "metric": "Productivity Collective (Vendor + Milkrun) %",
+    "details": "Pencapaian productivity kolektif tim putaway (adj.)",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-Putaway",
+    "remarks": "Non-BSC",
+    "metric": "SLA Putaway Achievement",
+    "details": "SLA putaway",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-All",
+    "remarks": "Non-BSC",
+    "metric": "Inventory Capacity Forecast (By Qty)",
+    "details": "Forecast kapasitas inventory warehouse by SC",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-All",
+    "remarks": "Non-BSC",
+    "metric": "Inventory Capacity Max (By Qty)",
+    "details": "Kapasitas maksimum inventory warehouse",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-All",
+    "remarks": "Non-BSC",
+    "metric": "Inventory Actual Max (By Qty)",
+    "details": "Available + LDP (max. per day)",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-All",
+    "remarks": "Non-BSC",
+    "metric": "Inventory Actual Ending (By Qty)",
+    "details": "Available + LDP (ending SOH, 23.59) > TBC",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-All",
+    "remarks": "Non-BSC",
+    "metric": "Inventory Utilization Actual (Max.) vs Forecast %",
+    "details": "Persentase inventory aktual (max.) dengan forecast",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-All",
+    "remarks": "Non-BSC",
+    "metric": "Inventory Utilization Actual (Max.) vs Max. Capacity %",
+    "details": "Persentase inventory actual (max.) dengan kapasitas max",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inventory",
+    "remarks": "Non-BSC",
+    "metric": "Inventory Capacity Forecast (By Qty) Frozen",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inventory",
+    "remarks": "Non-BSC",
+    "metric": "Inventory Capacity Max (By Qty) Frozen",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inventory",
+    "remarks": "Non-BSC",
+    "metric": "Inventory Actual Max (By Qty) Frozen",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inventory",
+    "remarks": "Non-BSC",
+    "metric": "Utilization Actual vs Forecast % Frozen",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inventory",
+    "remarks": "Non-BSC",
+    "metric": "Utilization Actual vs Max % Frozen",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inventory",
+    "remarks": "Non-BSC",
+    "metric": "Inventory Capacity Forecast (By Qty) Chiller",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inventory",
+    "remarks": "Non-BSC",
+    "metric": "Inventory Capacity Max (By Qty) Chiller",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inventory",
+    "remarks": "Non-BSC",
+    "metric": "Inventory Actual Max (By Qty) Chiller",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inventory",
+    "remarks": "Non-BSC",
+    "metric": "Utilization Actual vs Forecast % Chiller",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inventory",
+    "remarks": "Non-BSC",
+    "metric": "Utilization Actual vs Max % Chiller",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inventory",
+    "remarks": "Non-BSC",
+    "metric": "Inventory Capacity Forecast (By Qty) Ambient",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inventory",
+    "remarks": "Non-BSC",
+    "metric": "Inventory Capacity Max (By Qty) Ambient",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inventory",
+    "remarks": "Non-BSC",
+    "metric": "Inventory Actual Max (By Qty) Ambient",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inventory",
+    "remarks": "Non-BSC",
+    "metric": "Utilization Actual vs Forecast % Ambient",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inventory",
+    "remarks": "Non-BSC",
+    "metric": "Utilization Actual vs Max % Ambient",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-All",
+    "remarks": "Non-BSC",
+    "metric": "Inventory Accuracy by Qty (DCC Regular)",
+    "details": "Akurasi qty by DCC regular",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-All",
+    "remarks": "Non-BSC",
+    "metric": "Inventory Accuracy by SLOC (DCC Regular)",
+    "details": "Akurasi SLOC by DCC regular",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-All",
+    "remarks": "BSC",
+    "metric": "SLOC x Qty Accuracy (DCC Regular)",
+    "details": "Akurasi SLOC x Qty by DCC regular",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-All",
+    "remarks": "Non-BSC",
+    "metric": "Planogram Accuracy",
+    "details": "TBC",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-Replenishment",
+    "remarks": "Non-BSC",
+    "metric": "Replenishment Task (by Qty)",
+    "details": "Qty task replenishment",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-Replenishment",
+    "remarks": "Non-BSC",
+    "metric": "Replenishment Done (by Qty)",
+    "details": "Qty yang diproses replenishment",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-Replenishment",
+    "remarks": "BSC",
+    "metric": "SLA Replenishment",
+    "details": "SLA replenishment",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-Replenishment",
+    "remarks": "BSC",
+    "metric": "Replenishment Completion Rate %",
+    "details": "Persentase qty diproses dengan qty task",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-Replenishment",
+    "remarks": "Non-BSC",
+    "metric": "Replenishment Suggestion Accuracy %",
+    "details": "Persentase akurasi lokasi tujuan replenishment",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-Replenishment",
+    "remarks": "Non-BSC",
+    "metric": "Replenishment Productivity Target",
+    "details": "Target productivity replenishment",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-Replenishment",
+    "remarks": "Non-BSC",
+    "metric": "Budget Mandays Replenishment",
+    "details": "Budget mandays tim replenishment",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-Replenishment",
+    "remarks": "Non-BSC",
+    "metric": "Actual Mandays Replenishment",
+    "details": "Mandays tim replenishment",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-Replenishment",
+    "remarks": "BSC",
+    "metric": "Replenishment Actual Productivity Collective",
+    "details": "Productivity kolektif tim replenishment",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-Replenishment",
+    "remarks": "BSC",
+    "metric": "Productivity Collective Achievement %",
+    "details": "Pencapaian productivity kolektif tim replenishment",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-Troubleshoot",
+    "remarks": "Non-BSC",
+    "metric": "Troubleshoot Task Created",
+    "details": "Qty pick to lost oleh picker",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-Troubleshoot",
+    "remarks": "Non-BSC",
+    "metric": "Troubleshoot Task Executed",
+    "details": "Qty dipenuhi oleh troubleshoot",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-Troubleshoot",
+    "remarks": "Non-BSC",
+    "metric": "Troubleshoot FR %",
+    "details": "Persentase Qty dipenuhi oleh troubleshoot",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-Troubleshoot",
+    "remarks": "Non-BSC",
+    "metric": "Contribution to SO FR %",
+    "details": "Persentase qty dipenuhi TS terhadap total SO",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-DCC",
+    "remarks": "Non-BSC",
+    "metric": "LBH (By Qty)",
+    "details": "Jumlah LBH by qty",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-DCC",
+    "remarks": "Non-BSC",
+    "metric": "LBH (By Value)",
+    "details": "Jumlah LBH by value",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-DCC",
+    "remarks": "Non-BSC",
+    "metric": "LDP (By Qty)",
+    "details": "Jumlah LDP by qty",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-DCC",
+    "remarks": "Non-BSC",
+    "metric": "LDP (By Value)",
+    "details": "Jumlah LDP by value",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-DCC",
+    "remarks": "BSC",
+    "metric": "LDP vs. Inventory Stock %",
+    "details": "Persentase LDP dengan max. inventory",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-DCC",
+    "remarks": "Non-BSC",
+    "metric": "Lost fo Found",
+    "details": "Jumlah qty yang ditemukan",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Inv-DCC",
+    "remarks": "Non-BSC",
+    "metric": "Found %",
+    "details": "Persentase qty yang ditemukan dengan total lost",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Bad Stock",
+    "remarks": "BSC",
+    "metric": "Wastage Handling WH",
+    "details": "Jumlah wastage akibat handling",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Bad Stock",
+    "remarks": "BSC",
+    "metric": "SLA Bad Stock",
+    "details": "SLA bad stock",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Bad Stock",
+    "remarks": "Non-BSC",
+    "metric": "Badstock Qty (Actual)",
+    "details": "Qty actual badstock",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Bad Stock",
+    "remarks": "Non-BSC",
+    "metric": "Actual Mandays",
+    "details": "Mandays Badstock Staff",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Inventory",
+    "role": "Bad Stock",
+    "remarks": "BSC",
+    "metric": "Actual Productivity Collective",
+    "details": "Productivity kolektif tim bad stock",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Oub-All",
+    "remarks": "Non-BSC",
+    "metric": "Outbound Forecast MPP",
+    "details": "Forecast yang digunakan saat MP planning",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Oub-All",
+    "remarks": "Non-BSC",
+    "metric": "Outbound Forecast Weekly",
+    "details": "Forecast yang disetujui oleh ops dan SC tiap weekly",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Oub-All",
+    "remarks": "Non-BSC",
+    "metric": "Qty Milkrun",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Oub-All",
+    "remarks": "Non-BSC",
+    "metric": "Outbound Qty Requested (Before Cancel)",
+    "details": "Qty yang direquest dari SO sebelum cancel",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Oub-All",
+    "remarks": "Non-BSC",
+    "metric": "Outbound Qty Requested",
+    "details": "Qty yang direquest dari SO",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-All",
+    "remarks": "Non-BSC",
+    "metric": "Outbound Qty RTS",
+    "details": "Qty yang berhasil diproses tim warehouse",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-All",
+    "remarks": "Non-BSC",
+    "metric": "Outbound Qty Actual (Hub Received)",
+    "details": "Qty yang diterima tim hub",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-All",
+    "remarks": "Non-BSC",
+    "metric": "Outbound Qty Unfulfilled",
+    "details": "Qty yang tidak diselesaikan tim warehouse",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Oub-All",
+    "remarks": "Non-BSC",
+    "metric": "Outbound Forecast Weekly Accuracy %",
+    "details": "Incoming per forecast weekly",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Oub-All",
+    "remarks": "Non-BSC",
+    "metric": "Outbound Forecast MPP Accuracy %",
+    "details": "Incoming  per forecast MPP",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Oub-All",
+    "remarks": "Non-BSC",
+    "metric": "SO Ratio",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Oub-All",
+    "remarks": "Non-BSC",
+    "metric": "Max SO / Outbound Capacity",
+    "details": "Kapasitas maksimum outbound",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Oub-All",
+    "remarks": "Non-BSC",
+    "metric": "Outbound Utilization Rate %",
+    "details": "Utilisasi kapasitas outbound",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-Picker",
+    "remarks": "Non-BSC",
+    "metric": "Picker Productivity Target",
+    "details": "Target productivity picker",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-Picker",
+    "remarks": "Non-BSC",
+    "metric": "Budget Mandays Picker",
+    "details": "Budget mandays tim picker",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-Picker",
+    "remarks": "Non-BSC",
+    "metric": "MP Recommendation Picker",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-Picker",
+    "remarks": "Non-BSC",
+    "metric": "Actual Mandays Picker",
+    "details": "Mandays tim picker",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-Picker",
+    "remarks": "Non-BSC",
+    "metric": "Picker Actual Productivity Collective",
+    "details": "Productivity kolektif tim picker",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-Picker",
+    "remarks": "Non-BSC",
+    "metric": "Picker Productivity by User Login",
+    "details": "Productivity tim picker berdasarkan user login",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-Picker",
+    "remarks": "Non-BSC",
+    "metric": "Picker Productivity Collective %",
+    "details": "Pencapaian productivity kolektif tim picker",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-Picker",
+    "remarks": "Non-BSC",
+    "metric": "Picker Regular Productivity",
+    "details": "Pencapaian productivity picker regular",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-Picker",
+    "remarks": "Non-BSC",
+    "metric": "Picker OJT Productivity",
+    "details": "Pencapaian productivity picker OJT (Join < 60 hari)",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-Picker",
+    "remarks": "Non-BSC",
+    "metric": "Picker Productivity Collective Adjustment %",
+    "details": "Pencapaian productivity kolektif tim picker (adj.)",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-Sorter",
+    "remarks": "Non-BSC",
+    "metric": "Sorter Productivity Target",
+    "details": "Target productivity sorter",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-Sorter",
+    "remarks": "Non-BSC",
+    "metric": "Budget Mandays",
+    "details": "Budget mandays tim sorter",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-Sorter",
+    "remarks": "Non-BSC",
+    "metric": "Actual Mandays",
+    "details": "Mandays tim sorter",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-Sorter",
+    "remarks": "Non-BSC",
+    "metric": "Actual Productivity Collective",
+    "details": "Productivity kolektif tim sorter",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-Sorter",
+    "remarks": "Non-BSC",
+    "metric": "Sorter Productivity Collective %",
+    "details": "Pencapaian productivity kolektif tim sorter",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-Sorter",
+    "remarks": "Non-BSC",
+    "metric": "Sorter Productivity Collective Adjustment %",
+    "details": "Pencapaian productivity kolektif tim sorter (adj.)",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-Packer",
+    "remarks": "Non-BSC",
+    "metric": "Packer Productivity Target",
+    "details": "Target productivity packer",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-Packer",
+    "remarks": "Non-BSC",
+    "metric": "Budget Mandays Packer",
+    "details": "Budget mandays tim packer",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-Packer",
+    "remarks": "Non-BSC",
+    "metric": "MP Recommendation Packer",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-Packer",
+    "remarks": "Non-BSC",
+    "metric": "Actual Mandays Packer",
+    "details": "Mandays tim packer",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-Packer",
+    "remarks": "Non-BSC",
+    "metric": "Packer Actual Productivity Collective",
+    "details": "Productivity kolektif tim packer",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-Packer",
+    "remarks": "Non-BSC",
+    "metric": "Packer Productivity by User Login",
+    "details": "Productivity tim packer berdasarkan user login",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-Packer",
+    "remarks": "Non-BSC",
+    "metric": "Packer Productivity Collective %",
+    "details": "Pencapaian productivity kolektif tim packer",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-Packer",
+    "remarks": "Non-BSC",
+    "metric": "Packer Productivity Collective Adjustment %",
+    "details": "Pencapaian productivity kolektif tim packer (adj.)",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-Loader",
+    "remarks": "Non-BSC",
+    "metric": "Loader Productivity Target",
+    "details": "Target productivity loader",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-Loader",
+    "remarks": "Non-BSC",
+    "metric": "Budget Mandays Loader",
+    "details": "Budget mandays tim loader",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-Loader",
+    "remarks": "Non-BSC",
+    "metric": "MP Recommendation Loader",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-Loader",
+    "remarks": "Non-BSC",
+    "metric": "Actual Mandays Loader",
+    "details": "Mandays tim loader",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-Loader",
+    "remarks": "Non-BSC",
+    "metric": "Loader Actual Productivity Collective",
+    "details": "Productivity kolektif tim loader",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-Loader",
+    "remarks": "Non-BSC",
+    "metric": "Loader Productivity bu User Login",
+    "details": "Productivity tim loader berdasarkan user login",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-Loader",
+    "remarks": "Non-BSC",
+    "metric": "Loader Productivity Collective %",
+    "details": "Pencapaian productivity kolektif tim loader",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-Loader",
+    "remarks": "Non-BSC",
+    "metric": "Loader Productivity Collective Adjustment %",
+    "details": "Pencapaian productivity kolektif tim loader (adj.)",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-All",
+    "remarks": "Non-BSC",
+    "metric": "Productivity Overall Outbound",
+    "details": "Avg productivity tim outbound",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-All",
+    "remarks": "Non-BSC",
+    "metric": "Productivity Overall Outbound by user login",
+    "details": "Avg productivity tim outbound berdasarkan user login",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-All",
+    "remarks": "BSC",
+    "metric": "Productivity Overall %",
+    "details": "Pencapaian productivity tim outbound",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-All",
+    "remarks": "Non-BSC",
+    "metric": "Pick to PF %",
+    "details": "Persentase picking di area pickface",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-All",
+    "remarks": "Non-BSC",
+    "metric": "Adoption Rate SEUIC %",
+    "details": "Persentase penggunaan SEUIC dari keseluruhan proses",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-All",
+    "remarks": "BSC",
+    "metric": "Pick to Lost (by Qty)",
+    "details": "Selisih qty rts dengan qty request",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-All",
+    "remarks": "BSC",
+    "metric": "Pick to Lost %",
+    "details": "Persentase selisih qty rts dengan qty request",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-All",
+    "remarks": "BSC",
+    "metric": "Pick to Bad (by Qty)",
+    "details": "Qty pack to bad",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-All",
+    "remarks": "BSC",
+    "metric": "Pick to Bad %",
+    "details": "Persentase total qty pack to bad dengan qty rts",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-All",
+    "remarks": "BSC",
+    "metric": "Inbound to Lost (by Qty)",
+    "details": "Qty inbound to lost",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-All",
+    "remarks": "BSC",
+    "metric": "Inbound to Lost %",
+    "details": "Persentase total qty inbound to lost dengan qty rts",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-All",
+    "remarks": "BSC",
+    "metric": "Inbound to Bad (by Qty)",
+    "details": "Qty inbound to bad",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-All",
+    "remarks": "BSC",
+    "metric": "Inbound to Bad %",
+    "details": "Persentase total qty inbound to bad dengan qty rts",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-All",
+    "remarks": "Non-BSC",
+    "metric": "Inbound to Lost (Completed from SO Approval)",
+    "details": "Jumlah koli yang tidak dan/atau belum terkirim",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-All",
+    "remarks": "Non-BSC",
+    "metric": "Inbound to Lost % (Completed from SO Approval)",
+    "details": "Persentase jumlah koli yang tidak dan/atau belum terkirim",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-All",
+    "remarks": "BSC",
+    "metric": "Koli Hilang di Staging (by Qty)",
+    "details": "Jumlah koli yang hilang di staging",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-All",
+    "remarks": "BSC",
+    "metric": "Koli Hilang di Staging %",
+    "details": "Persentase jumlah koli hilang di staging",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-All",
+    "remarks": "Non-BSC",
+    "metric": "Fulfillment Rate % Warehouse exclude troubleshoot",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-All",
+    "remarks": "Non-BSC",
+    "metric": "Fulfillment Rate % Warehouse",
+    "details": "Persentase qty rts dengan qty request",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-All",
+    "remarks": "Non-BSC",
+    "metric": "Fulfillment Rate % Inbound Hub",
+    "details": "Persentase qty actual diterima Hub dengan qty request",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-All",
+    "remarks": "BSC",
+    "metric": "On Time Dispatch",
+    "details": "Total dispatch on time dari warehouse",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Outbound",
+    "role": "Out-All",
+    "remarks": "BSC",
+    "metric": "On Time Dispatch %",
+    "details": "Persentase dispatch on time dari warehouse",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Fleet",
+    "role": "Fleet-All",
+    "remarks": "",
+    "metric": "On Time Dispatch %",
+    "details": "Persentase dispatch on time dari fleet",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Fleet",
+    "role": "Fleet-All",
+    "remarks": "",
+    "metric": "Truck Dedicated",
+    "details": "Jumlah fleet dedicated",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Fleet",
+    "role": "Fleet-All",
+    "remarks": "",
+    "metric": "Actual Truck Delivered",
+    "details": "Jumlah fleet yang diberangkatkan",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Fleet",
+    "role": "Fleet-All",
+    "remarks": "",
+    "metric": "On Call",
+    "details": "Jumlah fleet on call",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Fleet",
+    "role": "Fleet-All",
+    "remarks": "",
+    "metric": "Truck Delivered %",
+    "details": "Persentase truk berangkat dengan truk dedicated",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Fleet",
+    "role": "Fleet-All",
+    "remarks": "",
+    "metric": "On Time Arrival Driver (By Vehicle)",
+    "details": "Jumlah kejadian driver on time di warehouse",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Fleet",
+    "role": "Fleet-All",
+    "remarks": "",
+    "metric": "On Time Arrival Driver % (By Vehicle)",
+    "details": "Persentase kejadian driver on time di warehouse",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Fleet",
+    "role": "Fleet-All",
+    "remarks": "",
+    "metric": "On Time Dispatch (By Route)",
+    "details": "Total dispatch on time dari fleet",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Fleet",
+    "role": "Fleet-All",
+    "remarks": "",
+    "metric": "On Time Dipatch % (By Route)",
+    "details": "Persentase dispatch on time dari fleet",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Fleet",
+    "role": "Fleet-All",
+    "remarks": "",
+    "metric": "On Time Depart (By Route)",
+    "details": "Total keberangkatan on time dari fleet",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Fleet",
+    "role": "Fleet-All",
+    "remarks": "",
+    "metric": "On Time Depart % (By Route)",
+    "details": "Persentase keberangkatan on time dari fleet",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Fleet",
+    "role": "Fleet-All",
+    "remarks": "",
+    "metric": "On Time Arrival HUB-1 (By Route)",
+    "details": "Total arrival on time ke hub 1 dari fleet",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Fleet",
+    "role": "Fleet-All",
+    "remarks": "",
+    "metric": "On Time Arrival HUB-1 % (By Route)",
+    "details": "Persentase arrival on time ke hub 1 dari fleet",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Fleet",
+    "role": "Fleet-All",
+    "remarks": "",
+    "metric": "On Time Arrival HUB-2 (By Route)",
+    "details": "Total arrival on time ke hub 2 dari fleet",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Fleet",
+    "role": "Fleet-All",
+    "remarks": "",
+    "metric": "On Time Arrival HUB-2 % (By Route)",
+    "details": "Persentase arrival on time ke hub 2 dari fleet",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Fleet",
+    "role": "Fleet-All",
+    "remarks": "",
+    "metric": "On Time Arrival HUB-3 (By Route)",
+    "details": "Total arrival on time ke hub 3 dari fleet",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Fleet",
+    "role": "Fleet-All",
+    "remarks": "",
+    "metric": "On Time Arrival HUB-3 % (By Route)",
+    "details": "Persentase arrival on time ke hub 3 dari fleet",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Fleet",
+    "role": "Fleet-All",
+    "remarks": "",
+    "metric": "On Time Arrival (By Route)",
+    "details": "Total arrival on time overall dari fleet",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Fleet",
+    "role": "Fleet-All",
+    "remarks": "",
+    "metric": "On Time Arrival % (By Route)",
+    "details": "Persentase arrival on time overall dari fleet",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Fleet",
+    "role": "Fleet-All",
+    "remarks": "",
+    "metric": "Fleet Adjustment",
+    "details": "Kejadian tak terduga yang mengganggu operasional",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "Other",
+    "role": "All",
+    "remarks": "",
+    "metric": "GMV",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "QC / QM",
+    "role": "QC-Inbound",
+    "remarks": "",
+    "metric": "Screening Actual Inbound (By Qty)",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "QC / QM",
+    "role": "QC-Staging",
+    "remarks": "",
+    "metric": "Screening Actual Staging (By Qty)",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "QC / QM",
+    "role": "QC-Outbound",
+    "remarks": "",
+    "metric": "Screening Actual Outbound (By Qty)",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "QC / QM",
+    "role": "Wastage due to Handling",
+    "remarks": "",
+    "metric": "Wastage due to Handling",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "QC / QM",
+    "role": "Wastage due to Expired",
+    "remarks": "",
+    "metric": "Wastage due to Expired",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "QC / QM",
+    "role": "Wastage due to Others",
+    "remarks": "",
+    "metric": "Wastage due to Others",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "QC / QM",
+    "role": "Wastage due to Inbound to Bad",
+    "remarks": "",
+    "metric": "Wastage due to Inbound to Bad",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "QC / QM",
+    "role": "Total wastage WH",
+    "remarks": "",
+    "metric": "Total wastage WH",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "QC / QM",
+    "role": "Total wastage (WH + IB to Bad)",
+    "remarks": "",
+    "metric": "Total wastage (WH + IB to Bad)",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "QC / QM",
+    "role": "Total wastage (WH + IB to Bad)",
+    "remarks": "",
+    "metric": "Accumulation",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "QC / QM",
+    "role": "Total wastage (WH + IB to Bad)",
+    "remarks": "",
+    "metric": "% to GMV MTD",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "QC / QM",
+    "role": "Total wastage (WH + IB to Bad)",
+    "remarks": "",
+    "metric": "Runrate",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "QC / QM",
+    "role": "Total wastage (WH + IB to Bad)",
+    "remarks": "",
+    "metric": "% to GMV Runrate",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "QC / QM",
+    "role": "Total wastage (WH + IB to Bad)",
+    "remarks": "Exclude Inbound to Bad",
+    "metric": "Accumulation",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "QC / QM",
+    "role": "Total wastage (WH + IB to Bad)",
+    "remarks": "",
+    "metric": "% to GMV MTD",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "QC / QM",
+    "role": "Total wastage (WH + IB to Bad)",
+    "remarks": "",
+    "metric": "Runrate",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  },
+  {
+    "division": "QC / QM",
+    "role": "Total wastage (WH + IB to Bad)",
+    "remarks": "",
+    "metric": "% to GMV Runrate",
+    "details": "",
+    "explanation": "",
+    "notes": ""
+  }
+]

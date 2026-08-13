@@ -126,6 +126,13 @@ export interface Initiative {
     evidence: number;
     feasibility: number;
   };
+  /** Deterministic playbook branch selected from the current operating state. */
+  adaptiveVariant: string;
+  /** Exact current-state reason this initiative was selected for this warehouse. */
+  whyNow: string;
+  /** Observable condition that starts the playbook rather than a generic calendar date. */
+  trigger: string;
+  linkedChainIds: string[];
 }
 
 export interface AnalysisPayload {
@@ -163,6 +170,7 @@ export interface AnalysisPayload {
   trends: TrendSeries[];
   drivers: DriverSignal[];
   decisionInsights: DecisionInsight[];
+  causalChains: CausalChain[];
   painPoints: PainPoint[];
   initiatives: Initiative[];
   filters: {
@@ -183,8 +191,77 @@ export interface AnalysisPayload {
   riskMatrix: RiskMatrix;
   pivotRows: PivotMetricRow[];
   warehouseComparison: WarehouseComparisonRow[];
-  metricCatalog: Array<{ division: string; role: string; metric: string; detail: string }>;
+  metricCatalog: OperationalMetricSemantic[];
+  intelligence: IntelligenceSummary;
   economics: OperationsEconomics;
+}
+
+export type EvidenceState = "verified" | "supported" | "hypothesis" | "blocked";
+
+export interface CausalChain {
+  id: string;
+  priorityScore: number;
+  title: string;
+  domain: string;
+  state: EvidenceState;
+  confidence: "high" | "medium" | "low";
+  cause: string;
+  mechanism: string[];
+  outcome: string;
+  evidence: string[];
+  counterEvidence: string[];
+  missingEvidence: string[];
+  recommendedAction: string;
+  linkedPainIds: string[];
+}
+
+export type MetricFamily = "people" | "volume" | "capacity" | "productivity" | "service" | "inventory-quality" | "cost" | "fleet" | "other";
+export type MetricDecisionRole = "outcome" | "driver" | "guardrail" | "context";
+export type MetricReadiness = "decision_ready" | "diagnostic_only" | "observational" | "unconfirmed";
+
+export interface OperationalMetricSemantic {
+  id: string;
+  division: string;
+  role: string;
+  remarks: string;
+  metric: string;
+  detail: string;
+  family: MetricFamily;
+  decisionRole: MetricDecisionRole;
+  readiness: MetricReadiness;
+  polarity: "higher_better" | "lower_better" | "neutral";
+  definition: string;
+  decisionUse: string;
+  caveat: string | null;
+  glossaryNotes: string | null;
+  relatedMetrics: string[];
+  activeCoverage: number;
+  mappedKeyCount: number;
+}
+
+export interface OperatingRule {
+  id: string;
+  title: string;
+  principle: string;
+  decisionGuardrail: string;
+}
+
+export interface IntelligenceSummary {
+  sourceMetrics: number;
+  activeMetrics: number;
+  decisionReadyMetrics: number;
+  diagnosticMetrics: number;
+  observationalMetrics: number;
+  unconfirmedMetrics: number;
+  semanticCoveragePct: number;
+  domains: Array<{
+    domain: string;
+    totalMetrics: number;
+    activeMetrics: number;
+    decisionReadyMetrics: number;
+    activeCoveragePct: number;
+  }>;
+  operatingRules: OperatingRule[];
 }
 
 export interface OperationsEconomics {
