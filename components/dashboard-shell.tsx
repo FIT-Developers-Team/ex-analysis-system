@@ -388,7 +388,8 @@ export function DashboardShell() {
   const selectView = (nextView: View) => {
     setView(nextView);
     window.requestAnimationFrame(() => {
-      workspaceRef.current?.focus();
+      workspaceRef.current?.focus({ preventScroll: true });
+      window.scrollTo({ top: 0, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
     });
   };
 

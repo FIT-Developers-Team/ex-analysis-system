@@ -15,16 +15,37 @@ plus a human maintainer. Codex reads this file directly; Claude Code reaches it
 through `CLAUDE.md`. Everything below applies to both. Keep additions outside the
 `nextjs-agent-rules` block above, which `next dev` regenerates.
 
-## Branches and merging
+## Workflow: commit straight to `main`
 
-- **Never push to `main`. Never merge to `main`.** Only the human maintainer does,
-  by hand. An agent that merges removes the one review step in this workflow.
-- Work on a prefixed branch so authorship is obvious from `git branch`:
-  `claude/<topic>` or `codex/<topic>`. One topic per branch.
-- Before handing work back, rebase onto the latest `origin/main` and re-run the
-  quality gate, so the maintainer's merge is a fast-forward and never a surprise.
-- Leave the branch committed and clean. State plainly what is unfinished rather
-  than leaving uncommitted files for the other agent to discover.
+This repo runs on a single branch. Both agents and the maintainer work on `main`
+and push to it directly. The whole cycle is four commands:
+
+```bash
+git pull --rebase origin main
+git add .
+git commit -m "what changed, and why"
+git push origin main
+```
+
+The `pull --rebase` is what makes one shared branch safe with more than one
+author. Without it, whoever pushes second is rejected as non-fast-forward; with
+it, your commits replay on top of the other agent's and history stays linear.
+`pull.rebase` is already set to true in this clone, so a bare `git pull` does the
+right thing too.
+
+What this workflow asks in return, since there is no review branch to catch
+anything:
+
+- **Only push working code.** `npm run quality` must pass before every commit.
+  A broken `main` blocks the other agent immediately.
+- **Commit what you changed, not whatever is lying around.** `git add .` stages
+  everything, so read `git status` first and leave unrelated edits alone.
+- **Push soon after committing.** Commits held locally for a long time are what
+  turn into painful rebases later.
+- **Never force-push.** `git push --force` on a shared `main` destroys the other
+  agent's commits. If a push is rejected, `git pull --rebase` and push again.
+- **Say what is unfinished.** State it plainly rather than leaving uncommitted
+  files behind for the other agent to find.
 
 ## Before every commit
 
