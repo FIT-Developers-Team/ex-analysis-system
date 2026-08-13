@@ -123,7 +123,7 @@ export function RelationshipChart({ signals }: { signals: RelationshipSignal[] }
   const data = [...signals].filter((signal) => signal.coefficient !== null).sort((a, b) => (a.coefficient ?? 0) - (b.coefficient ?? 0));
   return <Chart height={Math.max(330, data.length * 42)} option={{
     animationDuration: 350,
-    tooltip: { ...tooltip, trigger: "item", formatter: (params: { dataIndex: number; value: number }) => { const signal = data[params.dataIndex]; return `<strong>${signal.driverLabel} → ${signal.outcomeLabel}</strong><br/>r ${Number(params.value).toFixed(2)} · n ${signal.sampleSize}<br/>${signal.strength} · ${signal.confidence} confidence<br/>${signal.alignment}`; } },
+    tooltip: { ...tooltip, trigger: "item", formatter: (params: { dataIndex: number; value: number }) => { const signal = data[params.dataIndex]; return `<strong>${signal.driverLabel} → ${signal.outcomeLabel}</strong><br/>r ${Number(params.value).toFixed(2)} · n ${signal.sampleSize}<br/>${signal.strength} · keyakinan ${signal.confidence}<br/>${signal.alignment}`; } },
     grid: { left: 220, right: 62, top: 18, bottom: 34 },
     xAxis: { type: "value", min: -1, max: 1, axisLabel: { color: "#54637a", fontSize: 11 }, splitLine: split },
     yAxis: { type: "category", data: data.map((signal) => `${signal.driverLabel} → ${signal.outcomeLabel}`), axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: "#33445c", fontSize: 11, width: 204, overflow: "truncate" } },
@@ -135,7 +135,7 @@ export function RiskHeatmapChart({ matrix }: { matrix: RiskMatrix }) {
   const data = matrix.rows.flatMap((row, y) => row.values.flatMap((value, x) => value === null ? [] : [[x, y, value]]));
   return <Chart height={350} option={{
     animationDuration: 350,
-    tooltip: { ...tooltip, position: "top", formatter: (params: { value: [number, number, number] }) => `${matrix.rows[params.value[1]]?.domain}<br/><strong>Risk ${params.value[2]}/100</strong><br/>${matrix.weeks[params.value[0]]}` },
+    tooltip: { ...tooltip, position: "top", formatter: (params: { value: [number, number, number] }) => `${matrix.rows[params.value[1]]?.domain}<br/><strong>Risiko ${params.value[2]}/100</strong><br/>${matrix.weeks[params.value[0]]}` },
     grid: { left: 110, right: 22, top: 20, bottom: 62 },
     xAxis: { type: "category", data: matrix.weeks, splitArea: { show: true, areaStyle: { color: ["#fbfcfe", "#f6f8fb"] } }, axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: "#54637a", fontSize: 10, rotate: 28 } },
     yAxis: { type: "category", data: matrix.rows.map((row) => row.domain), splitArea: { show: true }, axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: "#33445c", fontSize: 11 } },
@@ -148,17 +148,17 @@ export function InitiativePriorityChart({ initiatives }: { initiatives: Initiati
   const effort = { low: 1, medium: 2, high: 3 } as const;
   return <Chart height={320} option={{
     animationDuration: 350,
-    tooltip: { ...tooltip, formatter: (params: { dataIndex: number }) => { const item = initiatives[params.dataIndex]; return `<strong>${item.title}</strong><br/>Priority ${item.priorityScore}/100<br/>Effort ${item.effort} · ${item.horizonDays} hari<br/>Owner ${item.owner}`; } },
+    tooltip: { ...tooltip, formatter: (params: { dataIndex: number }) => { const item = initiatives[params.dataIndex]; return `<strong>${item.title}</strong><br/>Prioritas ${item.priorityScore}/100<br/>Usaha ${item.effort} · ${item.horizonDays} hari<br/>Owner ${item.owner}`; } },
     grid: { left: 56, right: 38, top: 34, bottom: 54 },
-    xAxis: { type: "value", min: 0.6, max: 3.4, interval: 1, axisLabel: { color: "#54637a", fontSize: 11, formatter: (value: number) => value === 1 ? "Low" : value === 2 ? "Medium" : value === 3 ? "High" : "" }, splitLine: split, name: "Implementation effort", nameLocation: "middle", nameGap: 36, nameTextStyle: { color: "#54637a", fontSize: 11 } },
-    yAxis: { type: "value", min: 0, max: 100, axisLabel: { color: "#54637a", fontSize: 11 }, splitLine: split, name: "Priority", nameTextStyle: { color: "#54637a", fontSize: 11 } },
-    series: [{ type: "scatter", symbolSize: (value: [number, number, number]) => 18 + Math.max(0, 35 - value[2]) * 0.35, data: initiatives.map((item) => ({ value: [effort[item.effort], item.priorityScore, item.horizonDays], name: item.title, itemStyle: { color: item.type === "stabilize" ? palette[0] : item.type === "optimize" ? palette[1] : palette[2] }, label: { show: true, position: "top", color: "#33445c", fontSize: 10, width: 124, overflow: "truncate", formatter: item.title } })), markLine: { symbol: "none", silent: true, data: [{ yAxis: 65, lineStyle: { color: palette[2], type: "dashed" }, label: { formatter: "action line", color: "#855309", fontSize: 10 } }] } }],
+    xAxis: { type: "value", min: 0.6, max: 3.4, interval: 1, axisLabel: { color: "#54637a", fontSize: 11, formatter: (value: number) => value === 1 ? "Rendah" : value === 2 ? "Sedang" : value === 3 ? "Tinggi" : "" }, splitLine: split, name: "Usaha implementasi", nameLocation: "middle", nameGap: 36, nameTextStyle: { color: "#54637a", fontSize: 11 } },
+    yAxis: { type: "value", min: 0, max: 100, axisLabel: { color: "#54637a", fontSize: 11 }, splitLine: split, name: "Prioritas", nameTextStyle: { color: "#54637a", fontSize: 11 } },
+    series: [{ type: "scatter", symbolSize: (value: [number, number, number]) => 18 + Math.max(0, 35 - value[2]) * 0.35, data: initiatives.map((item) => ({ value: [effort[item.effort], item.priorityScore, item.horizonDays], name: item.title, itemStyle: { color: item.type === "stabilize" ? palette[0] : item.type === "optimize" ? palette[1] : palette[2] }, label: { show: true, position: "top", color: "#33445c", fontSize: 10, width: 124, overflow: "truncate", formatter: item.title } })), markLine: { symbol: "none", silent: true, data: [{ yAxis: 65, lineStyle: { color: palette[2], type: "dashed" }, label: { formatter: "ambang tindakan", color: "#855309", fontSize: 10 } }] } }],
   }} />;
 }
 
 export function SimulationImpactChart({ result }: { result: SimulationResult }) {
   const data = [
-    ["Productivity", result.productivityChange], ["Inbound SLA", result.slaChange], ["Fulfillment", result.fulfillmentChange], ["Capacity load", result.utilizationChange], ["Mandays gap", result.mandaysGapChange],
+    ["Produktivitas", result.productivityChange], ["SLA inbound", result.slaChange], ["Demand fill", result.demandFillChange], ["Beban kapasitas", result.utilizationChange], ["Gap mandays", result.mandaysGapChange],
   ] as const;
   const max = Math.max(10, ...data.map((item) => Math.abs(item[1])));
   return <Chart height={300} option={{
@@ -184,7 +184,7 @@ export function DriverChart({ drivers }: { drivers: DriverSignal[] }) {
 }
 
 export function HealthGauge({ score }: { score: number }) {
-  return <Chart height={185} option={{ series: [{ type: "gauge", startAngle: 205, endAngle: -25, min: 0, max: 100, radius: "88%", center: ["50%", "56%"], progress: { show: true, width: 9, roundCap: true, itemStyle: { color: score < 65 ? palette[3] : score < 82 ? palette[2] : palette[0] } }, axisLine: { lineStyle: { width: 9, color: [[1, "rgba(255,255,255,.12)"]] } }, pointer: { show: false }, axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false }, title: { offsetCenter: [0, "38%"], color: "#9aa8ba", fontSize: 11 }, detail: { valueAnimation: true, offsetCenter: [0, "0%"], color: "#fff", fontSize: 34, fontWeight: 700, formatter: "{value}" }, data: [{ value: score, name: "SYSTEM HEALTH" }] }] }} />;
+  return <Chart height={185} option={{ series: [{ type: "gauge", startAngle: 205, endAngle: -25, min: 0, max: 100, radius: "88%", center: ["50%", "56%"], progress: { show: true, width: 9, roundCap: true, itemStyle: { color: score < 65 ? palette[3] : score < 82 ? palette[2] : palette[0] } }, axisLine: { lineStyle: { width: 9, color: [[1, "rgba(255,255,255,.12)"]] } }, pointer: { show: false }, axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false }, title: { offsetCenter: [0, "38%"], color: "#9aa8ba", fontSize: 11 }, detail: { valueAnimation: true, offsetCenter: [0, "0%"], color: "#fff", fontSize: 34, fontWeight: 700, formatter: "{value}" }, data: [{ value: score, name: "KESEHATAN SISTEM" }] }] }} />;
 }
 
 export function WarehouseComparisonChart({ rows }: { rows: WarehouseComparisonRow[] }) {

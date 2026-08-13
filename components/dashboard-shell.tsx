@@ -17,6 +17,8 @@ import {
   Info,
   LayoutDashboard,
   Lightbulb,
+  PanelLeftClose,
+  PanelLeftOpen,
   RefreshCw,
   Search,
   SlidersHorizontal,
@@ -49,22 +51,23 @@ import { PRIORITY_WAREHOUSES } from "@/lib/types";
 type View = "overview" | "flow" | "relationships" | "simulation" | "initiatives" | "data";
 
 const nav = [
-  { id: "overview" as const, label: "Cockpit eksekutif", short: "Cockpit", icon: LayoutDashboard },
-  { id: "flow" as const, label: "Demand & flow", short: "Flow", icon: TrendingUp },
-  { id: "relationships" as const, label: "Lab hubungan", short: "Relasi", icon: GitBranch },
-  { id: "simulation" as const, label: "Studio skenario", short: "Skenario", icon: FlaskConical },
-  { id: "initiatives" as const, label: "Portofolio inisiatif", short: "Project", icon: Lightbulb },
-  { id: "data" as const, label: "Registry metric", short: "Metric", icon: Database },
+  { id: "overview" as const, label: "Cockpit operasi", short: "Cockpit", icon: LayoutDashboard },
+  { id: "flow" as const, label: "Alur demand", short: "Alur", icon: TrendingUp },
+  { id: "relationships" as const, label: "Hubungan driver", short: "Driver", icon: GitBranch },
+  { id: "simulation" as const, label: "Simulasi keputusan", short: "Simulasi", icon: FlaskConical },
+  { id: "initiatives" as const, label: "Inisiatif prioritas", short: "Inisiatif", icon: Lightbulb },
+  { id: "data" as const, label: "Data & kualitas", short: "Data", icon: Database },
 ];
 
-const periodLabels: Record<Period, string> = { daily: "Daily", weekly: "Weekly", monthly: "Monthly" };
+const periodLabels: Record<Period, string> = { daily: "Harian", weekly: "Mingguan", monthly: "Bulanan", custom: "Kustom" };
+const presetPeriods: Period[] = ["daily", "weekly", "monthly"];
 
 type ModuleStatus = AnalysisPayload["functionalModules"][number]["status"];
 
 // Status is spelled out next to the bar rather than carried by the bar colour
 // alone. "No data" is deliberately neutral: an unavailable pillar is a missing
 // measurement, not a passing or failing one.
-const moduleStatusLabel: Record<ModuleStatus, string> = { controlled: "Controlled", watch: "Watch", critical: "Critical", unavailable: "No data" };
+const moduleStatusLabel: Record<ModuleStatus, string> = { controlled: "Terkendali", watch: "Waspada", critical: "Kritis", unavailable: "Tidak ada data" };
 const moduleTone = (status: ModuleStatus) => (status === "controlled" ? "good" : status === "unavailable" ? "neutral" : status);
 
 function fmtDate(date: string) {
@@ -73,6 +76,20 @@ function fmtDate(date: string) {
 
 function fmtSigned(value: number, suffix = "%") {
   return `${value > 0 ? "+" : ""}${value.toFixed(1)}${suffix}`;
+}
+
+function fmtNumber(value: number | null, maximumFractionDigits = 1) {
+  return value === null ? "—" : value.toLocaleString("id-ID", { maximumFractionDigits });
+}
+
+function syncLabel(data: AnalysisPayload | null, error: string | null) {
+  if (error) return { label: "Koneksi bermasalah", tone: "error" };
+  if (!data) return { label: "Menghubungkan data", tone: "loading" };
+  const { sync } = data.context;
+  if (sync.isStale) return { label: "Data perlu diperbarui", tone: "stale" };
+  if (sync.state === "fallback") return { label: "Fallback aktif", tone: "stale" };
+  if (sync.state === "cached") return { label: "Cache cepat", tone: "cached" };
+  return { label: sync.provider === "google" ? "Google Sheets live" : "Sumber lokal siap", tone: "live" };
 }
 
 function fmtMetric(value: number | null, unit: AnalysisPayload["pivotRows"][number]["unit"]) {
@@ -89,6 +106,10 @@ function FilterSelect({ label, value, onChange, children, disabled = false }: { 
       <div><select value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled}>{children}</select><ChevronDown size={14} /></div>
     </label>
   );
+}
+
+function DateField({ label, value, onChange, minimum, maximum, disabled = false }: { label: string; value: string; onChange: (value: string) => void; minimum?: string; maximum?: string; disabled?: boolean }) {
+  return <label className={`date-field${disabled ? " is-disabled" : ""}`}><span>{label}</span><div><CalendarDays size={15} /><input type="date" value={value} min={minimum} max={maximum} disabled={disabled} onChange={(event) => onChange(event.target.value)} /></div></label>;
 }
 
 function SectionHeader({ eyebrow, title, description, action }: { eyebrow: string; title: string; description?: string; action?: React.ReactNode }) {
@@ -118,10 +139,38 @@ function InsightCard({ insight, index }: { insight: DecisionInsight; index: numb
     <article className={`insight-card insight-card--${insight.priority}`}>
       <header><span>0{index + 1}</span><div><small>{insight.domain}</small><h3>{insight.title}</h3></div><b>{insight.priority}</b></header>
       <p>{insight.observation}</p>
-      <div className="insight-implication"><strong>Why it matters</strong><span>{insight.implication}</span></div>
+      <div className="insight-implication"><strong>Mengapa penting</strong><span>{insight.implication}</span></div>
       <div className="insight-action"><ArrowRight size={15} /><span>{insight.recommendedAction}</span></div>
-      <footer><span>{insight.confidence} confidence</span><span>{insight.evidence.length} evidence points</span></footer>
+      <footer><span>Keyakinan {insight.confidence}</span><span>{insight.evidence.length} bukti</span></footer>
     </article>
+  );
+}
+
+function EconomicsBrief({ data }: { data: AnalysisPayload }) {
+  const item = data.economics;
+  const verdictLabel: Record<typeof item.verdict, string> = {
+    validated_saving: "Efisiensi tervalidasi",
+    false_economy: "Penghematan semu",
+    undercoverage: "Risiko kekurangan MP",
+    process_loss: "Process loss",
+    balanced: "Seimbang",
+    insufficient: "Data belum cukup",
+  };
+  return (
+    <section className={`economics-brief economics-brief--${item.verdict}`} aria-label="Ringkasan ekonomi operasi">
+      <div className="economics-brief__copy">
+        <span className="eyebrow">Keputusan biaya & layanan</span>
+        <div className="economics-title-row"><h2>{item.headline}</h2><b>{verdictLabel[item.verdict]}</b></div>
+        <p>{item.narrative}</p>
+        <small>Proksi biaya memakai mandays per 1.000 unit terlayani, bukan nilai rupiah.</small>
+      </div>
+      <div className="economics-metrics">
+        <div><span>Intensitas tenaga</span><strong>{fmtNumber(item.costToServeMdPerThousand, 2)}</strong><small>MD / 1.000 unit</small></div>
+        <div><span>Perubahan</span><strong>{item.costToServeDeltaPct === null ? "—" : fmtSigned(item.costToServeDeltaPct)}</strong><small>vs periode setara</small></div>
+        <div><span>Produktivitas terjaga</span><strong>{item.serviceAdjustedProductivity === null ? "—" : `${fmtNumber(item.serviceAdjustedProductivity)}%`}</strong><small>setelah guardrail service</small></div>
+        <div><span>Demand tak terlayani</span><strong>{fmtNumber(item.unservedDemandQty, 0)}</strong><small>unit dari demand awal</small></div>
+      </div>
+    </section>
   );
 }
 
@@ -136,13 +185,15 @@ function ExecutiveCockpit({ data, openInitiatives }: { data: AnalysisPayload; op
       <section className="intelligence-hero intelligence-hero--executive" aria-labelledby="cockpit-title">
         <div className="hero-copy">
           <span className={`status-label status-label--${data.health.status}`}><CircleDot size={13} />{data.health.headline}</span>
-          <div className="hero-score-compact"><span>System health</span><strong>{data.health.score}</strong></div>
+          <div className="hero-score-compact"><span>Kesehatan sistem</span><strong>{data.health.score}</strong></div>
           <h1 id="cockpit-title">Sistem operasi {data.context.warehouse} <em>{data.health.status === "controlled" ? "terkendali" : "sedang tertekan"}</em></h1>
           <p>{data.health.narrative}</p>
-          <div className="hero-meta"><span><CalendarDays size={14} />{fmtDate(data.context.rangeStart)} — {fmtDate(data.context.rangeEnd)}</span><span><Database size={14} />{data.health.confidence}% analytical confidence</span></div>
+          <div className="hero-meta"><span><CalendarDays size={14} />{fmtDate(data.context.rangeStart)} — {fmtDate(data.context.rangeEnd)}</span><span><Database size={14} />{data.health.confidence}% coverage analisis</span></div>
         </div>
         <div className="health-gauge"><HealthGauge score={data.health.score} /></div>
       </section>
+
+      <EconomicsBrief data={data} />
 
       <div className="kpi-rail-header"><div><span>Guardrail utama</span><strong>Signal yang membentuk system health</strong></div><small>Geser untuk melihat seluruh KPI</small></div>
       <section className="kpi-strip" aria-label="KPI guardrail utama">{priority.map((metric) => <KpiCard key={metric.key} metric={metric} />)}</section>
@@ -158,24 +209,24 @@ function ExecutiveCockpit({ data, openInitiatives }: { data: AnalysisPayload; op
       )}
 
       <section className="section-block">
-        <SectionHeader eyebrow="Decision brief" title="What the operating review should decide next" description="Prioritas dibentuk dari trade-off volume, mandays, SLA, capacity, cancel, dan inventory control—not a single KPI breach." />
+        <SectionHeader eyebrow="Ringkasan keputusan" title="Keputusan berikut yang perlu diambil" description="Prioritas mempertimbangkan volume, mandays, SLA, kapasitas, cancel, dan kontrol inventory secara bersamaan." />
         <div className="insight-grid">{data.decisionInsights.slice(0, 3).map((insight, index) => <InsightCard insight={insight} index={index} key={insight.id} />)}</div>
       </section>
 
       <section className="split-grid split-grid--wide-left">
         <div className="panel chart-panel">
-          <SectionHeader eyebrow="8-week control surface" title="Risk migrates across functions" description="Health score dibalik menjadi risk: semakin merah, semakin besar pressure pada minggu tersebut." />
+          <SectionHeader eyebrow="Kontrol 8 minggu" title="Perpindahan risiko antar fungsi" description="Semakin merah, semakin besar tekanan operasi pada minggu tersebut." />
           <RiskHeatmapChart matrix={data.riskMatrix} />
           <div className="chart-legend"><span><i className="legend-low" />Controlled</span><span><i className="legend-watch" />Watch</span><span><i className="legend-high" />High risk</span></div>
         </div>
         <div className="panel">
-          <SectionHeader eyebrow="Attention order" title="Current driver health" description="Skor di bawah 65 menjadi prioritas diagnostic." />
+          <SectionHeader eyebrow="Urutan perhatian" title="Kesehatan driver saat ini" description="Skor di bawah 65 menjadi prioritas pemeriksaan." />
           <DriverChart drivers={data.drivers} />
         </div>
       </section>
 
       <section className="panel flow-panel">
-        <SectionHeader eyebrow="Connected operations core" title="One flow, shared consequences" description="People dan planning menggerakkan inbound, inventory, outbound, dan fleet sebagai satu sistem." />
+        <SectionHeader eyebrow="Inti operasi terhubung" title="Satu alur, dampak saling terkait" description="People dan planning menggerakkan inbound, inventory, outbound, dan fleet sebagai satu sistem." />
         <OperationsFlow modules={data.functionalModules} />
       </section>
 
@@ -192,15 +243,15 @@ function ExecutiveCockpit({ data, openInitiatives }: { data: AnalysisPayload; op
 
       <section className="split-grid">
         <div className="panel chart-panel">
-          <SectionHeader eyebrow="28-day signal" title="Operating system movement" description="Gaps menandakan data belum tersedia atau invalid." />
+          <SectionHeader eyebrow={`${data.trends[0]?.values.length ?? 0}-hari`} title="Pergerakan sistem operasi" description="Celah pada grafik berarti data kosong atau tidak valid." />
           <TrendChart series={data.trends.slice(0, 4)} />
         </div>
         <div className="panel panel--ink portfolio-callout">
-          <SectionHeader eyebrow="Highest-priority project" title={data.initiatives[0]?.title ?? "Validate operating baseline"} />
+          <SectionHeader eyebrow="Inisiatif teratas" title={data.initiatives[0]?.title ?? "Validasi baseline operasi"} />
           <div className="portfolio-score"><strong>{data.initiatives[0]?.priorityScore ?? 0}</strong><span>priority<br/>score</span></div>
           <p>{data.initiatives[0]?.intervention}</p>
-          <div className="impact-box"><Sparkles size={18} /><div><span>Expected impact</span><strong>{data.initiatives[0]?.expectedImpact}</strong></div></div>
-          <button className="text-button" onClick={openInitiatives}>Open project portfolio <ChevronRight size={15} /></button>
+          <div className="impact-box"><Sparkles size={18} /><div><span>Dampak yang dituju</span><strong>{data.initiatives[0]?.expectedImpact}</strong></div></div>
+          <button className="text-button" onClick={openInitiatives}>Buka daftar inisiatif <ChevronRight size={15} /></button>
         </div>
       </section>
 
@@ -221,32 +272,32 @@ function FlowIntelligence({ data }: { data: AnalysisPayload }) {
   const [mode, setMode] = useState<"inbound" | "outbound">("outbound");
   return (
     <>
-      <PageIntro eyebrow="Demand-to-service control" title="Ikuti setiap unit hingga layanan selesai" description="Bandingkan forecast, actual, cancel, RTS, hub received, labor, dan zonal capacity dalam satu aliran keputusan." meta={`${periodLabels[data.context.period]} · ${fmtDate(data.context.rangeStart)} — ${fmtDate(data.context.rangeEnd)}`} />
+      <PageIntro eyebrow="Kontrol demand ke layanan" title="Ikuti setiap unit sampai selesai dilayani" description="Bandingkan forecast, aktual, cancel, RTS, penerimaan hub, manpower, dan kapasitas zona dalam satu alur." meta={`${periodLabels[data.context.period]} · ${fmtDate(data.context.rangeStart)} — ${fmtDate(data.context.rangeEnd)}`} />
       <section className="panel chart-panel">
-        <SectionHeader eyebrow="28-day volume truth" title={mode === "outbound" ? "Forecast → request → RTS → hub" : "Forecast → actual inbound"} description="Actual goods menjadi basis productivity; forecast dipakai sebagai planning reference." action={<div className="segmented-control"><button className={mode === "inbound" ? "active" : ""} onClick={() => setMode("inbound")}>Inbound</button><button className={mode === "outbound" ? "active" : ""} onClick={() => setMode("outbound")}>Outbound</button></div>} />
+        <SectionHeader eyebrow={`${data.volumeFlow.length}-hari volume`} title={mode === "outbound" ? "Forecast → request → RTS → hub" : "Forecast → aktual inbound"} description="Barang aktual menjadi dasar produktivitas; forecast menjadi acuan rencana." action={<div className="segmented-control"><button className={mode === "inbound" ? "active" : ""} onClick={() => setMode("inbound")}>Inbound</button><button className={mode === "outbound" ? "active" : ""} onClick={() => setMode("outbound")}>Outbound</button></div>} />
         <VolumeFlowChart points={data.volumeFlow} mode={mode} />
       </section>
 
       <section className="split-grid split-grid--wide-left">
         <div className="panel chart-panel">
-          <SectionHeader eyebrow="Fulfillment loss tree" title="Where outbound volume falls away" description="Step conversion membedakan demand variance, cancel, warehouse execution, dan downstream receipt." />
+          <SectionHeader eyebrow="Loss tree fulfillment" title="Di mana volume outbound berkurang" description="Tahap konversi memisahkan selisih demand, cancel, eksekusi warehouse, dan penerimaan downstream." />
           <FulfillmentFunnelChart stages={data.fulfillmentFunnel} />
           <div className="funnel-stage-strip">{data.fulfillmentFunnel.slice(1).map((stage) => <div key={stage.key}><span>{stage.label}</span><strong>{stage.conversionPct === null ? "—" : `${stage.conversionPct.toFixed(1)}%`}</strong><small>{stage.lossQty === null ? "No comparable stage" : `${stage.lossQty.toLocaleString("id-ID")} qty step loss`}</small></div>)}</div>
         </div>
         <div className="panel decision-sidebar">
-          <SectionHeader eyebrow="Flow decisions" title="Act on the constraint" />
+          <SectionHeader eyebrow="Keputusan alur" title="Tindak constraint utama" />
           {data.decisionInsights.filter((item) => ["Planning", "Outbound", "Labor economics"].includes(item.domain)).slice(0, 3).map((item) => <article key={item.id}><span>{item.domain}</span><strong>{item.title}</strong><p>{item.recommendedAction}</p></article>)}
           {!data.decisionInsights.some((item) => ["Planning", "Outbound", "Labor economics"].includes(item.domain)) && <div className="empty-state"><CheckCircle2 size={18} /><p>Tidak ada flow breach besar pada cut aktif. Pertahankan guardrail dan pantau perubahan harian.</p></div>}
         </div>
       </section>
 
       <section className="panel chart-panel">
-        <SectionHeader eyebrow="Labor economics" title="Budget mandays, actual mandays, and output per manday" description="Actual MD di bawah budget hanya dianggap saving bila productivity dan SLA tetap sehat." />
+        <SectionHeader eyebrow="Ekonomi manpower" title="Budget mandays, actual mandays, dan output" description="Actual MD di bawah budget hanya disebut efisien jika demand, produktivitas, dan SLA tetap aman." />
         <LaborBalanceChart points={data.laborBalance} />
       </section>
 
       <section className="panel chart-panel">
-        <SectionHeader eyebrow="Zonal capacity" title="Ambient, chiller, and frozen operating envelope" description="Warning 85% dan critical 92%; nilai harian tidak diisi secara artifisial saat source kosong." />
+        <SectionHeader eyebrow="Kapasitas zona" title="Batas operasi ambient, chiller, dan frozen" description="Waspada di 85%, kritis di 92%; hari kosong tidak diisi dengan angka buatan." />
         <CapacityHistoryChart points={data.capacityHistory} />
         <div className="capacity-grid capacity-grid--attached">{data.capacityZones.map((zone) => <article className={`capacity-zone capacity-zone--${zone.status}`} key={zone.zone}><header><div><span>{zone.zone}</span><strong>{zone.utilization === null ? "—" : `${zone.utilization.toFixed(1)}%`}</strong></div><b>{zone.status}</b></header><div className="capacity-track"><i style={{ width: `${Math.min(100, zone.utilization ?? 0)}%` }} /></div><footer><span>Actual <b>{zone.actual?.toLocaleString("id-ID") ?? "—"}</b></span><span>Max <b>{zone.maximum?.toLocaleString("id-ID") ?? "—"}</b></span></footer>{zone.note && <p className="zone-note"><AlertTriangle size={13} />{zone.note}</p>}</article>)}</div>
       </section>
@@ -264,15 +315,15 @@ function RelationshipLab({ data }: { data: AnalysisPayload }) {
   });
   return (
     <>
-      <PageIntro eyebrow="Cross-functional diagnostic" title="Bedakan korelasi dari fakta operasional" description="Hubungan 84 hari dipakai sebagai signal untuk investigasi, bukan klaim kausal. Sample size, lag, confidence, dan arah hipotesis selalu terlihat." meta={`84-day lookback · as of ${fmtDate(data.context.asOf)}`} />
+      <PageIntro eyebrow="Diagnosis lintas fungsi" title="Bedakan hubungan data dari penyebab nyata" description="Hubungan 84 hari menjadi petunjuk investigasi, bukan bukti sebab-akibat. Sampel, jeda, keyakinan, dan arah hipotesis selalu ditampilkan." meta={`Riwayat 84 hari · sampai ${fmtDate(data.context.asOf)}`} />
       <section className="split-grid split-grid--wide-left">
         <div className="panel chart-panel">
-          <SectionHeader eyebrow="Association map" title="Which levers move with which outcomes" description="Koefisien Pearson r: biru mendukung arah hipotesis, emas berlawanan, abu-abu belum konklusif." />
+          <SectionHeader eyebrow="Peta hubungan" title="Driver yang bergerak bersama outcome" description="Pearson r: biru searah hipotesis, emas berlawanan, abu-abu belum meyakinkan." />
           <RelationshipChart signals={data.relationshipSignals} />
         </div>
         <div className="panel relationship-notice">
           <Info size={20} />
-          <div><strong>How to use this page</strong><p>Mulai dari hubungan moderate/strong dengan sample memadai. Validasi lewat shift, weekday, volume band, dan floor observation sebelum membuat kebijakan.</p></div>
+          <div><strong>Cara memakai halaman ini</strong><p>Mulai dari hubungan sedang/kuat dengan sampel memadai. Validasi per shift, weekday, volume band, dan observasi floor sebelum membuat kebijakan.</p></div>
           <div className="relationship-stats"><span><b>{data.relationshipSignals.filter((item) => item.survivesMultiplicity).length}</b> lolos koreksi</span><span><b>{data.relationshipSignals.filter((item) => item.sharedTerm).length}</b> confounded</span><span><b>{data.relationshipSignals.filter((item) => item.alignment === "inconclusive").length}</b> inconclusive</span></div>
         </div>
       </section>
@@ -311,7 +362,7 @@ function RelationshipLab({ data }: { data: AnalysisPayload }) {
 function ScenarioStudio({ data }: { data: AnalysisPayload }) {
   const [inputs, setInputs] = useState<SimulationInputs>({ forecastChange: 0, attendanceChange: 0, cancelChange: 0, processGain: 0 });
   const find = (key: string, fallback: number) => data.kpis.find((item) => item.key === key)?.value ?? fallback;
-  const baseline = { productivityAttainment: find("productivity_attainment", 90), sla: find("sla_checker_inbound", 95), fulfillment: find("fulfillment_rate", 97), utilization: find("capacity_utilization", 75), mandaysGap: find("mandays_variance", 0) };
+  const baseline = { productivityAttainment: find("productivity_attainment", 90), sla: find("sla_checker_inbound", 95), demandFill: find("demand_fill_rate", 97), utilization: find("capacity_utilization", 75), mandaysGap: find("mandays_variance", 0) };
   const result = runSimulation(baseline, inputs);
   const controls: Array<{ key: keyof SimulationInputs; label: string; hint: string; min: number; max: number }> = [
     { key: "forecastChange", label: "Actual volume vs baseline", hint: "Perubahan workload yang benar-benar masuk", min: -30, max: 35 },
@@ -321,7 +372,7 @@ function ScenarioStudio({ data }: { data: AnalysisPayload }) {
   ];
   return (
     <>
-      <PageIntro eyebrow="Transparent what-if model" title="Uji keputusan sebelum berdampak ke floor" description="Simulator directional untuk melihat tarik-menarik volume, manpower, cancel, productivity, SLA, fulfillment, dan capacity." meta={`${data.context.warehouse} baseline · ${periodLabels[data.context.period]}`} />
+      <PageIntro eyebrow="Simulasi transparan" title="Uji keputusan sebelum diterapkan di floor" description="Lihat dampak arah perubahan volume, manpower, cancel, produktivitas, SLA, fulfillment, dan kapasitas." meta={`${data.context.warehouse} baseline · ${periodLabels[data.context.period]}`} />
       <section className="simulation-layout">
         <div className="panel controls-panel">
           <div className="simulation-baseline"><SlidersHorizontal size={18} /><div><strong>{data.context.warehouse} observed baseline</strong><span>Cut-off {fmtDate(data.context.asOf)}</span></div></div>
@@ -334,7 +385,7 @@ function ScenarioStudio({ data }: { data: AnalysisPayload }) {
           <div className="model-notes model-notes--light"><strong>Model interpretation</strong>{result.notes.map((note) => <p key={note}><Info size={14} />{note}</p>)}</div>
         </div>
       </section>
-      <section className="baseline-grid"><div><span>Productivity</span><strong>{baseline.productivityAttainment.toFixed(1)}%</strong></div><div><span>Inbound SLA</span><strong>{baseline.sla.toFixed(1)}%</strong></div><div><span>Fulfillment</span><strong>{baseline.fulfillment.toFixed(1)}%</strong></div><div><span>Peak capacity</span><strong>{baseline.utilization.toFixed(1)}%</strong></div><div><span>Mandays gap</span><strong>{fmtSigned(baseline.mandaysGap)}</strong></div></section>
+      <section className="baseline-grid"><div><span>Productivity</span><strong>{baseline.productivityAttainment.toFixed(1)}%</strong></div><div><span>Inbound SLA</span><strong>{baseline.sla.toFixed(1)}%</strong></div><div><span>Demand fill</span><strong>{baseline.demandFill.toFixed(1)}%</strong></div><div><span>Peak capacity</span><strong>{baseline.utilization.toFixed(1)}%</strong></div><div><span>Mandays gap</span><strong>{fmtSigned(baseline.mandaysGap)}</strong></div></section>
       <section className="panel assumption-panel"><Target size={19} /><div><strong>Model mechanics and boundary</strong><p>Volume memengaruhi output per fixed manday; attendance menambah SLA buffer tetapi dapat menurunkan productivity; process gain menaikkan throughput; return dilunakkan saat capacity melewati 88%. Gunakan hasil untuk memilih pilot, bukan sebagai forecast finansial.</p></div></section>
     </>
   );
@@ -343,23 +394,24 @@ function ScenarioStudio({ data }: { data: AnalysisPayload }) {
 function InitiativePortfolio({ data }: { data: AnalysisPayload }) {
   return (
     <>
-      <PageIntro eyebrow="Execution portfolio" title="Ubah pain berulang menjadi project terukur" description="Setiap project memiliki owner, effort, horizon, evidence, outcome, guardrail, dan langkah pertama—bukan sekadar generic recommendation." meta={`${data.initiatives.length} projects · ${data.context.warehouse}`} />
+      <PageIntro eyebrow="Portofolio eksekusi" title="Ubah masalah berulang menjadi inisiatif terukur" description="Setiap inisiatif memiliki owner, usaha, target waktu, bukti, guardrail, dan langkah awal." meta={`${data.initiatives.length} inisiatif · ${data.context.warehouse}`} />
       <section className="portfolio-overview">
-        <div className="panel chart-panel"><SectionHeader eyebrow="Priority vs effort" title="Fund the right work first" description="Ukuran titik menunjukkan horizon; garis 65 adalah action threshold." /><InitiativePriorityChart initiatives={data.initiatives} /></div>
+        <div className="panel chart-panel"><SectionHeader eyebrow="Prioritas vs usaha" title="Kerjakan yang paling bernilai lebih dulu" description="Ukuran titik menunjukkan target waktu; garis 65 adalah ambang tindakan." /><InitiativePriorityChart initiatives={data.initiatives} /></div>
         <div className="portfolio-summary">
-          <article><Users size={17} /><span>Primary owners</span><strong>{new Set(data.initiatives.map((item) => item.owner)).size}</strong></article>
-          <article><Target size={17} /><span>High-confidence</span><strong>{data.initiatives.filter((item) => item.confidence === "high").length}</strong></article>
-          <article><CalendarDays size={17} /><span>Fastest horizon</span><strong>{Math.min(...data.initiatives.map((item) => item.horizonDays))}d</strong></article>
-          <article><Sparkles size={17} /><span>Top priority</span><strong>{Math.max(...data.initiatives.map((item) => item.priorityScore))}</strong></article>
+          <article><Users size={17} /><span>Owner utama</span><strong>{new Set(data.initiatives.map((item) => item.owner)).size}</strong></article>
+          <article><Target size={17} /><span>Keyakinan tinggi</span><strong>{data.initiatives.filter((item) => item.confidence === "high").length}</strong></article>
+          <article><CalendarDays size={17} /><span>Target tercepat</span><strong>{Math.min(...data.initiatives.map((item) => item.horizonDays))}h</strong></article>
+          <article><Sparkles size={17} /><span>Prioritas tertinggi</span><strong>{Math.max(...data.initiatives.map((item) => item.priorityScore))}</strong></article>
         </div>
       </section>
       <section className="initiative-grid">
         {data.initiatives.map((initiative, index) => (
           <article className="initiative-card" key={initiative.id}>
-            <header><span className="initiative-number">0{index + 1}</span><div><div className="tag-row"><span>{initiative.type}</span><span>{initiative.confidence} confidence</span><span>priority {initiative.priorityScore}</span></div><h3>{initiative.title}</h3><div className="initiative-meta"><span><Users size={13} />{initiative.owner}</span><span><BarChart3 size={13} />{initiative.effort} effort</span><span><CalendarDays size={13} />{initiative.horizonDays} days</span></div></div></header>
-            <div className="initiative-section"><span>Problem</span><p>{initiative.problem}</p></div><div className="initiative-section"><span>Intervention</span><p>{initiative.intervention}</p></div><div className="initiative-section initiative-section--impact"><span>Expected impact</span><p>{initiative.expectedImpact}</p></div>
-            <div className="initiative-evidence"><strong>Evidence used</strong>{initiative.evidence.map((item) => <span key={item}>{item}</span>)}</div>
-            <div className="initiative-columns"><div><strong>Measure & guardrail</strong>{initiative.measurement.map((item) => <p key={item}><CheckCircle2 size={13} />{item}</p>)}</div><div><strong>First 14 days</strong>{initiative.first14Days.map((item) => <p key={item}><ChevronRight size={13} />{item}</p>)}</div></div>
+            <header><span className="initiative-number">0{index + 1}</span><div><div className="tag-row"><span>{initiative.type}</span><span>keyakinan {initiative.confidence}</span><span>prioritas {initiative.priorityScore}</span></div><h3>{initiative.title}</h3><div className="initiative-meta"><span><Users size={13} />{initiative.owner}</span><span><BarChart3 size={13} />usaha {initiative.effort}</span><span><CalendarDays size={13} />{initiative.horizonDays} hari</span></div></div></header>
+            <div className="initiative-section"><span>Masalah</span><p>{initiative.problem}</p></div><div className="initiative-section"><span>Intervensi</span><p>{initiative.intervention}</p></div><div className="initiative-section initiative-section--impact"><span>Dampak yang dituju</span><p>{initiative.expectedImpact}</p></div>
+            <div className="initiative-decision-gates"><div><span>Berhasil bila</span><strong>{initiative.successGate}</strong></div><div><span>Stop-loss</span><strong>{initiative.stopLoss}</strong></div><div className="priority-breakdown"><span>Dasar prioritas</span><p><b>{initiative.priorityBreakdown.impact}</b> dampak · <b>{initiative.priorityBreakdown.recurrence}</b> berulang · <b>{initiative.priorityBreakdown.evidence}</b> bukti · <b>{initiative.priorityBreakdown.feasibility}</b> kelayakan</p></div></div>
+            <div className="initiative-evidence"><strong>Bukti yang dipakai</strong>{initiative.evidence.map((item) => <span key={item}>{item}</span>)}</div>
+            <div className="initiative-columns"><div><strong>Ukuran & guardrail</strong>{initiative.measurement.map((item) => <p key={item}><CheckCircle2 size={13} />{item}</p>)}</div><div><strong>14 hari pertama</strong>{initiative.first14Days.map((item) => <p key={item}><ChevronRight size={13} />{item}</p>)}</div></div>
           </article>
         ))}
       </section>
@@ -372,16 +424,17 @@ function MetricRegistry({ data }: { data: AnalysisPayload }) {
   const filtered = useMemo(() => data.pivotRows.filter((item) => `${item.division} ${item.role} ${item.metric} ${item.detail}`.toLowerCase().includes(query.toLowerCase())), [data.pivotRows, query]);
   return (
     <>
-      <PageIntro eyebrow="Metric registry & QA" title="Telusuri setiap angka sampai konteks operasinya" description="Pivot mempertahankan function, role, metric, detail, aggregation, comparison window, coverage, dan movement direction." meta={`${data.pivotRows.length} metrics · ${data.metricCatalog.length} catalog entries`} />
-      <section className="data-quality-strip"><div><span>Source</span><strong>{data.context.sourceName}</strong></div><div><span>Read mode</span><strong>{data.context.sourceMode === "google" ? "Google batch API" : data.context.sourceMode === "snapshot" ? "Optimized snapshot" : "Local workbook"}</strong></div><div><span>Latest actual</span><strong>{fmtDate(data.context.asOf)}</strong></div><div><span>Confidence</span><strong>{data.health.confidence}%</strong></div></section>
-      {data.health.dataWarnings.length > 0 && <section className="warning-panel"><AlertTriangle size={20} /><div><strong>Quality guardrails active</strong>{data.health.dataWarnings.map((warning) => <p key={warning}>{warning}</p>)}</div></section>}
+      <PageIntro eyebrow="Data & pemeriksaan kualitas" title="Telusuri setiap angka sampai konteks operasinya" description="Pivot menampilkan fungsi, peran, metric, detail, agregasi, periode pembanding, coverage, dan arah perubahan." meta={`${data.pivotRows.length} metric · ${data.metricCatalog.length} definisi`} />
+      <section className="data-quality-strip"><div><span>Sumber</span><strong>{data.context.sourceName}</strong></div><div><span>Status sinkron</span><strong>{syncLabel(data, null).label}</strong></div><div><span>Berhasil dibaca</span><strong>{new Date(data.context.sync.lastSuccessAt).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}</strong></div><div><span>Rentang aktif</span><strong>{fmtDate(data.context.rangeStart)} – {fmtDate(data.context.rangeEnd)}</strong></div><div><span>Perbandingan</span><strong>{fmtDate(data.context.comparisonStart)} – {fmtDate(data.context.comparisonEnd)}</strong></div><div><span>Coverage KPI</span><strong>{data.health.confidence}%</strong></div></section>
+      <section className={`sync-detail sync-detail--${data.context.sync.state}`}><Activity size={17} /><div><strong>{data.context.sync.message}</strong><p>{data.context.sync.rangesLoaded ? `${data.context.sync.rangesLoaded} rentang dibaca` : "Jumlah rentang tidak tercatat"} · {data.context.sync.latencyMs === null ? "durasi tidak tersedia" : `${data.context.sync.latencyMs.toLocaleString("id-ID")} ms`} · stale setelah {Math.round(data.context.sync.staleAfterSeconds / 60)} menit.</p></div></section>
+      {data.health.dataWarnings.length > 0 && <section className="warning-panel"><AlertTriangle size={20} /><div><strong>Guardrail kualitas aktif</strong>{data.health.dataWarnings.map((warning) => <p key={warning}>{warning}</p>)}</div></section>}
       <section className="panel metric-panel">
-        <div className="table-toolbar"><div><TableProperties size={17} /><span>Period pivot · current vs previous</span></div><div className="search-box"><Search size={17} /><input aria-label="Cari metric" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search metric, role, or function" /><span>{filtered.length}</span></div></div>
+        <div className="table-toolbar"><div><TableProperties size={17} /><span>Pivot periode · saat ini vs sebelumnya</span></div><div className="search-box"><Search size={17} /><input aria-label="Cari metric" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari metric, peran, atau fungsi" /><span>{filtered.length}</span></div></div>
         {/* Cell roles are not optional here: role="table" with rows but no cells
             announces as an empty table, which is worse than no roles at all. */}
         <div className="metric-table" role="table" aria-label="Metric pivot">
           <div className="metric-row metric-row--pivot metric-row--head" role="row">
-            {["Function / role", "Metric", "Aggregation", "Current", "Previous", "Delta", "Coverage"].map((heading) => <span role="columnheader" key={heading}>{heading}</span>)}
+            {["Fungsi / peran", "Metric", "Agregasi", "Saat ini", "Sebelumnya", "Delta", "Coverage"].map((heading) => <span role="columnheader" key={heading}>{heading}</span>)}
           </div>
           {filtered.slice(0, 250).map((item) => (
             <div className="metric-row metric-row--pivot" role="row" key={item.id}>
@@ -407,13 +460,21 @@ export function DashboardShell() {
   const [period, setPeriod] = useState<Period>("weekly");
   const [division, setDivision] = useState("All");
   const [role, setRole] = useState("All");
-  const [asOf, setAsOf] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [data, setData] = useState<AnalysisPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [navCollapsed, setNavCollapsed] = useState(false);
   const workspaceRef = useRef<HTMLDivElement>(null);
+  const activeRequest = useRef<AbortController | null>(null);
+  const requestSequence = useRef(0);
+
+  const toggleNavigation = () => {
+    setNavCollapsed((current) => !current);
+  };
 
   const selectView = (nextView: View) => {
     setView(nextView);
@@ -424,58 +485,97 @@ export function DashboardShell() {
   };
 
   const refresh = useCallback(async (quiet = false, force = false) => {
+    activeRequest.current?.abort();
+    const controller = new AbortController();
+    activeRequest.current = controller;
+    const sequence = ++requestSequence.current;
     if (!quiet) setLoading(true);
     try {
-      const query = new URLSearchParams({ warehouse, period, division, role });
-      if (asOf) query.set("asOf", asOf);
+      const queryPeriod = startDate && endDate ? "custom" : period === "custom" ? "weekly" : period;
+      const query = new URLSearchParams({ warehouse, period: queryPeriod, division, role });
+      if (startDate && endDate) {
+        query.set("period", "custom");
+        query.set("startDate", startDate);
+        query.set("endDate", endDate);
+      }
       if (force) query.set("refresh", "1");
-      const response = await fetch(`/api/analysis?${query.toString()}`, { cache: "no-store" });
+      const response = await fetch(`/api/analysis?${query.toString()}`, { cache: "no-store", signal: controller.signal });
       const payload = await response.json() as AnalysisPayload & { error?: string; detail?: string; remediation?: string };
       if (!response.ok) throw new Error([payload.error, payload.detail, payload.remediation].filter(Boolean).join(" — "));
-      setData(payload); setError(null); setLastRefresh(new Date());
+      if (sequence !== requestSequence.current) return;
+      setData(payload);
+      setError(null);
+      setLastRefresh(new Date());
     } catch (reason) {
+      if (reason instanceof DOMException && reason.name === "AbortError") return;
+      if (sequence !== requestSequence.current) return;
       setError(reason instanceof Error ? reason.message : "Gagal membaca source");
     } finally {
-      setLoading(false);
+      if (sequence === requestSequence.current) setLoading(false);
     }
-  }, [warehouse, period, division, role, asOf]);
+  }, [warehouse, period, division, role, startDate, endDate]);
 
   useEffect(() => {
     const initialTimer = window.setTimeout(() => void refresh(), 0);
-    const timer = window.setInterval(() => void refresh(true), 60_000);
-    return () => { window.clearTimeout(initialTimer); window.clearInterval(timer); };
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible" && navigator.onLine) void refresh(true);
+    }, 30_000);
+    return () => { window.clearTimeout(initialTimer); window.clearInterval(timer); activeRequest.current?.abort(); };
   }, [refresh]);
 
+  const choosePreset = (nextPeriod: Period) => {
+    setStartDate("");
+    setEndDate("");
+    setPeriod(nextPeriod);
+  };
+
+  const changeStartDate = (value: string) => {
+    setStartDate(value);
+    setEndDate((current) => current || data?.context.rangeEnd || value);
+    setPeriod("custom");
+  };
+
+  const changeEndDate = (value: string) => {
+    setEndDate(value);
+    setStartDate((current) => current || data?.context.rangeStart || value);
+    setPeriod("custom");
+  };
+
+  const sourceState = syncLabel(data, error);
+  const visibleStart = startDate || data?.context.rangeStart || "";
+  const visibleEnd = endDate || data?.context.rangeEnd || "";
+
   return (
-    <div className="app-shell">
+    <div className={`app-shell${navCollapsed ? " app-shell--nav-collapsed" : ""}`}>
       <a className="skip-link" href="#workspace-content">Lewati ke analisis utama</a>
       <aside className="sidebar">
-        <div className="brand"><div className="brand-mark"><BarChart3 size={19} /></div><div><strong>NEXUS</strong><span>Excellence Analysis</span></div></div>
+        <div className="brand"><div className="brand-mark"><BarChart3 size={19} /></div><div className="brand-copy"><strong>NEXUS</strong><span>Excellence Analysis</span></div></div>
         <nav aria-label="Workspace utama"><span className="nav-caption">Decision workspaces</span>{nav.map((item) => { const Icon = item.icon; return <button type="button" data-view={item.id} className={view === item.id ? "active" : ""} aria-current={view === item.id ? "page" : undefined} key={item.id} onClick={() => selectView(item.id)} title={item.label}><Icon size={18} /><span className="nav-label-long">{item.label}</span><span className="nav-label-short">{item.short}</span>{item.id === "initiatives" && data && <b>{data.initiatives.length}</b>}</button>; })}</nav>
-        <div className="sidebar-status"><div className="live-dot" /><div><strong>Source monitor</strong><span>{error ? "Connection needs attention" : "Auto-refresh · 60 sec"}</span></div></div>
+        <div className={`sidebar-status sidebar-status--${sourceState.tone}`}><div className="live-dot" /><div><strong>Monitor data</strong><span>{error ? "Perlu diperiksa" : "Refresh otomatis · 30 detik"}</span></div></div>
         <div className="sidebar-footer"><span>FIT Operations Intelligence</span><small>v0.3 · connected decision system</small></div>
       </aside>
 
       <main className="main-area">
-        <header className="topbar"><div className="breadcrumb"><span>FIT Ops Intelligence</span><ChevronRight size={14} /><strong>{nav.find((item) => item.id === view)?.label}</strong></div><div className="topbar-actions"><div className={`source-chip source-chip--${error ? "error" : "live"}`}><Activity size={14} /><span>{data?.context.sourceMode === "google" ? "Google live" : data?.context.sourceMode === "snapshot" ? "Snapshot fast-path" : "Local source"}</span></div><button className="refresh-button" onClick={() => void refresh(false, true)} aria-label="Refresh source"><RefreshCw className={loading ? "spinning" : ""} size={16} /><span>Sync now</span></button></div></header>
+        <header className="topbar"><div className="topbar-leading"><button type="button" className="menu-toggle" onClick={toggleNavigation} aria-label={navCollapsed ? "Tampilkan panel menu" : "Sembunyikan panel menu"} aria-expanded={!navCollapsed}>{navCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}</button><div className="breadcrumb"><span>FIT Ops Intelligence</span><ChevronRight size={14} /><strong>{nav.find((item) => item.id === view)?.label}</strong></div></div><div className="topbar-actions"><div className={`source-chip source-chip--${sourceState.tone}`} title={data?.context.sync.message}><Activity size={14} /><span>{sourceState.label}</span></div><button className="refresh-button" onClick={() => void refresh(false, true)} aria-label="Sinkronkan data sekarang"><RefreshCw className={loading ? "spinning" : ""} size={16} /><span>Sinkronkan</span></button></div></header>
 
         <div className="content-area">
-          <div className="context-line"><span>{warehouse} · {periodLabels[period]} intelligence</span><span>{lastRefresh ? `Refreshed ${lastRefresh.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}` : "Connecting to source"}</span></div>
+          <div className="context-line"><span>{warehouse} · Analisis {periodLabels[period].toLowerCase()}</span><span>{lastRefresh ? `Diperbarui ${lastRefresh.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}` : "Menghubungkan ke sumber data"}</span></div>
           <section className={`filter-console${filtersOpen ? " is-open" : ""}`} aria-label="Filter analisis">
-            <div className="filter-console__title"><SlidersHorizontal size={18} /><div><strong>Ruang lingkup analisis</strong><span>Semua halaman memakai satu cut-off</span></div><div className="filter-summary" aria-label="Filter aktif"><span>{warehouse}</span><span>{periodLabels[period]}</span><span>{division === "All" ? "Semua fungsi" : division}</span></div><button type="button" className="filter-toggle" aria-expanded={filtersOpen} aria-controls="filter-console-body" onClick={() => setFiltersOpen((current) => !current)}>{filtersOpen ? "Tutup" : "Ubah"}<ChevronDown size={16} /></button></div>
+            <div className="filter-console__title"><SlidersHorizontal size={18} /><div><strong>Filter analisis</strong><span>Satu rentang untuk seluruh halaman</span></div><div className="filter-summary" aria-label="Filter aktif"><span>{warehouse}</span><span>{periodLabels[period]}</span><span>{division === "All" ? "Semua fungsi" : division}</span></div><button type="button" className="filter-toggle" aria-expanded={filtersOpen} aria-controls="filter-console-body" onClick={() => setFiltersOpen((current) => !current)}>{filtersOpen ? "Tutup" : "Ubah"}<ChevronDown size={16} /></button></div>
             <div className="filter-console__body" id="filter-console-body">
               <div className="filter-console__fields">
-              <FilterSelect label="Warehouse" value={warehouse} onChange={(value) => { setWarehouse(value as WarehouseCode); setDivision("All"); setRole("All"); setAsOf(""); }}>{PRIORITY_WAREHOUSES.map((item) => <option value={item} key={item}>{item}</option>)}</FilterSelect>
-              <FilterSelect label="Function" value={division} onChange={(value) => { setDivision(value); setRole("All"); }}><option value="All">All functions</option>{(data?.filters.divisions ?? []).map((item) => <option value={item} key={item}>{item}</option>)}</FilterSelect>
-              <FilterSelect label="Role" value={role} onChange={setRole} disabled={!data}><option value="All">All roles</option>{(data?.filters.rolesByDivision[division] ?? data?.filters.rolesByDivision.All ?? []).map((item) => <option value={item} key={item}>{item}</option>)}</FilterSelect>
-              <FilterSelect label="Data cut-off" value={asOf} onChange={setAsOf} disabled={!data}><option value="">Latest actual</option>{(data?.filters.availableDates ?? []).map((item) => <option value={item} key={item}>{fmtDate(item)}</option>)}</FilterSelect>
+              <FilterSelect label="Warehouse" value={warehouse} onChange={(value) => { setWarehouse(value as WarehouseCode); setDivision("All"); setRole("All"); setStartDate(""); setEndDate(""); setPeriod("weekly"); }}>{PRIORITY_WAREHOUSES.map((item) => <option value={item} key={item}>{item}</option>)}</FilterSelect>
+              <FilterSelect label="Fungsi" value={division} onChange={(value) => { setDivision(value); setRole("All"); }}><option value="All">Semua fungsi</option>{(data?.filters.divisions ?? []).map((item) => <option value={item} key={item}>{item}</option>)}</FilterSelect>
+              <FilterSelect label="Peran" value={role} onChange={setRole} disabled={!data}><option value="All">Semua peran</option>{(data?.filters.rolesByDivision[division] ?? data?.filters.rolesByDivision.All ?? []).map((item) => <option value={item} key={item}>{item}</option>)}</FilterSelect>
+              <DateField label="Mulai" value={visibleStart} onChange={changeStartDate} minimum={data?.filters.minimumDate} maximum={visibleEnd || data?.filters.maximumDate} disabled={!data} />
+              <DateField label="Selesai" value={visibleEnd} onChange={changeEndDate} minimum={visibleStart || data?.filters.minimumDate} maximum={data?.filters.maximumDate} disabled={!data} />
               </div>
-              <div className="period-control"><span>View</span><div className="period-switcher" aria-label="Period">{Object.entries(periodLabels).map(([key, label]) => <button type="button" className={period === key ? "active" : ""} aria-pressed={period === key} onClick={() => setPeriod(key as Period)} key={key}>{label}</button>)}</div></div>
+              <div className="period-control"><span>Rentang cepat</span><div className="period-switcher" aria-label="Pilih rentang cepat">{presetPeriods.map((key) => <button type="button" className={period === key && !startDate ? "active" : ""} aria-pressed={period === key && !startDate} onClick={() => choosePreset(key)} key={key}>{key === "daily" ? "1 hari" : key === "weekly" ? "7 hari" : "30 hari"}</button>)}</div></div>
             </div>
           </section>
 
           <div id="workspace-content" className="workspace-content" ref={workspaceRef} tabIndex={-1} aria-live="polite" aria-label={nav.find((item) => item.id === view)?.label}>
-          {error ? <section className="source-error"><AlertTriangle size={24} /><div><h2>Live source belum terhubung</h2><p>{error}</p><button onClick={() => void refresh()}><RefreshCw size={15} />Retry connection</button></div></section> : loading && !data ? <Skeleton /> : data ? <>
+          {error ? <section className="source-error"><AlertTriangle size={24} /><div><h2>Data belum dapat dibaca</h2><p>{error}</p><button onClick={() => void refresh()}><RefreshCw size={15} />Coba lagi</button></div></section> : loading && !data ? <Skeleton /> : data ? <>
             {view === "overview" && <ExecutiveCockpit data={data} openInitiatives={() => selectView("initiatives")} />}
             {view === "flow" && <FlowIntelligence data={data} />}
             {view === "relationships" && <RelationshipLab data={data} />}

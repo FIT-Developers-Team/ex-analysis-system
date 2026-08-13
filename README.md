@@ -7,9 +7,10 @@ NEXUS is a connected operations-intelligence dashboard for FIT quick-commerce wa
 - Connects Personalia → Inbound → Inventory → Outbound → Fleet instead of scoring functions in isolation.
 - Compares forecast, actual workload, productivity, SLA, mandays, capacity, cancellation, DCC, troubleshoot, and fulfillment with explicit guardrails.
 - Generates recurring 8-week pain points and at least two evidence-linked project recommendations for each warehouse.
-- Provides current-vs-previous pivots by warehouse, function, role, period, and actual-data cut-off.
+- Provides Daily, Weekly, Monthly, or custom date-range pivots with an equal-length previous comparison.
 - Benchmarks PGS, SRG, BIT, and STR on a common period and cut-off.
-- Includes a transparent scenario lab for volume, attendance, cancel, and process-efficiency changes.
+- Includes a transparent scenario lab for volume, attendance, cancel, and process-efficiency changes, guarded by demand fill before cancellation.
+- Separates validated labor saving, false economy, under-coverage, and process loss using a non-monetary cost-to-serve proxy: mandays per 1,000 served units.
 - Exposes six decision workspaces: Executive Cockpit, Demand & Flow, Relationship Lab, Scenario Studio, Initiative Portfolio, and Metric Registry.
 - Adds an 8-week cross-functional risk heatmap, 28-day volume truth, fulfillment loss tree, labor-economics view, zonal capacity history, and priority-versus-effort portfolio.
 - Quantifies 84-day Pearson associations with sample size, lag, p-value, multiplicity correction, and hypothesis alignment; these signals are explicitly non-causal.
@@ -19,9 +20,9 @@ NEXUS is a connected operations-intelligence dashboard for FIT quick-commerce wa
 
 ```mermaid
 flowchart LR
-    GS["Private Google Sheet"] -->|"1 batchGet / refresh"| API["Node.js source adapter"]
+    GS["Private Google Sheet"] -->|"batchGet + timeout + retry"| API["Node.js source adapter"]
     XLSX["Local XLSX export"] --> SNAP["Gzip snapshot builder"]
-    SNAP --> API
+    SNAP -->|"last-known-good fallback"| API
     API --> DQ["Quality and date guardrails"]
     DQ --> SEM["Metric aliases and derived KPI layer"]
     SEM --> ENG["Operations analysis engine"]
@@ -65,7 +66,9 @@ The app also builds `.cache/operational-dataset.json.gz` automatically when the 
 4. Set `GOOGLE_SERVICE_ACCOUNT_EMAIL` and `GOOGLE_PRIVATE_KEY` from `.env.example`.
 5. Do not set `FIT_WORKBOOK_PATH` in production.
 
-The source adapter uses one `spreadsheets.values.batchGet` request for the four priority warehouse tabs plus `Highlight`, caches the normalized dataset for 60 seconds by default, deduplicates concurrent loads, and falls back to the last successful gzip snapshot if Google is temporarily unavailable.
+The source adapter uses one `spreadsheets.values.batchGet` request for the four priority warehouse tabs plus `Highlight`, maps returned ranges back to their tab names, caches the normalized dataset for 30 seconds by default, and deduplicates concurrent loads. Transient HTTP 408/429/5xx failures are retried with bounded backoff and a 12-second timeout. If the live source still fails, NEXUS serves the last successful gzip snapshot and marks the UI as `fallback` or `stale` instead of silently presenting it as live.
+
+The dashboard refreshes every 30 seconds only while the tab is visible and online. Manual sync bypasses the memory cache. Request cancellation and sequence checks prevent a slower, older response from overwriting a newer filter result.
 
 ## Calculation boundaries
 
@@ -73,11 +76,13 @@ The source adapter uses one `spreadsheets.values.batchGet` request for the four 
 - Forecast accuracy compares actual/requested workload against the matching weekly forecast.
 - **Fulfillment is reported twice, on purpose.** `Warehouse FR` divides shipped units by demand *after* cancellation, so cancelling work raises it. `Demand fill rate` divides by demand *before* cancellation and cannot be improved by dropping orders. Read the gap between them as the share of demand that was refused rather than served. The 97% target is derived from the guardrails already in use — FR 99% × (100% − cancel target 2%).
 - Mandays saving is only interpreted as healthy when productivity, SLA, **and cancel rate** are all within guardrail. A warehouse that cancels demand needs fewer mandays and posts higher output per manday at the same time, which is indistinguishable from efficiency unless cancellation is checked first.
+- Cost-to-serve is an operational labor-intensity proxy (`actual picker mandays ÷ RTS × 1,000`), not currency. No wage or financial cost is fabricated when the source does not contain it.
 - Cancel rate compares request before cancel with request after cancel.
 - Capacity uses actual against maximum; Ambient, Chiller, and Frozen use the latest available zone value in the active window. Zero readings are dropped (a snapshot that did not run is not an empty warehouse) and two zones reporting an identical actual are flagged rather than drawn as fact.
 - `Utilisasi puncak alur` is the highest of inbound, inventory, and outbound utilization. It is a flow measure, not storage occupancy — the zone panel is the occupancy view.
 - DCC is connected to putaway, replenish, troubleshoot, SLOC, and picker pressure.
 - Relabel forecast pieces and troubleshooter mandays are not available in the source; the dashboard discloses those limits and does not manufacture causal claims.
+- `schedule_accuracy` remains visible for inspection but does not trigger pain points or initiatives because its source definition is not yet confirmed.
 
 ## Measurement integrity rules
 

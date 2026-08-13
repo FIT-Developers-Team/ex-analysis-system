@@ -29,6 +29,9 @@ function baselinePoints(): MetricPoint[] {
     points.push(point(date, "Fulfillment Rate % Warehouse", 0.989));
     points.push(point(date, "Picker Productivity Target", 1000));
     points.push(point(date, "Picker Actual Productivity Collective", 900));
+    points.push(point(date, "Budget Mandays Picker", 10));
+    points.push(point(date, "Actual Mandays Picker", 9));
+    points.push(point(date, "SLA Checker Inbound Achievement", 0.99, "Inbound"));
   }
   return points;
 }
@@ -56,6 +59,23 @@ describe("analysis engine", () => {
     expect(output.riskMatrix.weeks).toHaveLength(8);
     expect(output.decisionInsights.some((item) => item.id === "cancel-not-recovering-productivity")).toBe(true);
     expect(output.initiatives.every((item) => item.owner && item.horizonDays > 0 && item.priorityScore >= 0)).toBe(true);
+    expect(output.economics.verdict).toBe("false_economy");
+    expect(output.economics.costToServeMdPerThousand).toBeGreaterThan(0);
+    expect(output.initiatives.every((item) => item.successGate && item.stopLoss && item.priorityBreakdown)).toBe(true);
+  });
+
+  it("supports a flexible custom window with an equal-length comparison", () => {
+    const output = buildAnalysis(dataset(baselinePoints()), "PGS", "custom", { startDate: "2026-06-10", endDate: "2026-06-19" });
+    expect(output.context.rangeStart).toBe("2026-06-10");
+    expect(output.context.rangeEnd).toBe("2026-06-19");
+    expect(output.context.comparisonStart).toBe("2026-05-31");
+    expect(output.context.comparisonEnd).toBe("2026-06-09");
+    expect(output.volumeFlow).toHaveLength(10);
+    expect(output.trends[0]?.values).toHaveLength(10);
+  });
+
+  it("rejects custom ranges longer than the dashboard safety limit", () => {
+    expect(() => buildAnalysis(dataset(baselinePoints()), "PGS", "custom", { startDate: "2026-01-01", endDate: "2026-07-20" })).toThrow(/maksimum 180 hari/i);
   });
 
   it("measures fulfillment against demand before cancellation", () => {

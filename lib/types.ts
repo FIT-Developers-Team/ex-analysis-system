@@ -1,7 +1,7 @@
 export const PRIORITY_WAREHOUSES = ["PGS", "SRG", "BIT", "STR"] as const;
 
 export type WarehouseCode = (typeof PRIORITY_WAREHOUSES)[number];
-export type Period = "daily" | "weekly" | "monthly";
+export type Period = "daily" | "weekly" | "monthly" | "custom";
 export type TrendDirection = "up" | "down" | "flat";
 export type Severity = "critical" | "watch" | "good" | "neutral";
 export type AggregationMode = "sum" | "average" | "latest" | "max";
@@ -41,6 +41,21 @@ export interface OperationalDataset {
     futureCells: number;
     latestCompleteDate: string | null;
   };
+  sync?: DataSyncMetadata;
+}
+
+export interface DataSyncMetadata {
+  provider: "google" | "workbook" | "snapshot";
+  state: "live" | "cached" | "fallback";
+  lastAttemptAt: string;
+  lastSuccessAt: string;
+  latencyMs: number | null;
+  attempts: number;
+  rangesLoaded: number;
+  cacheExpiresAt: string | null;
+  staleAfterSeconds: number;
+  isStale: boolean;
+  message: string;
 }
 
 export interface MetricReading {
@@ -102,6 +117,15 @@ export interface Initiative {
   horizonDays: number;
   linkedPainIds: string[];
   evidence: string[];
+  valueLens: "service" | "cost" | "capacity" | "quality" | "speed";
+  successGate: string;
+  stopLoss: string;
+  priorityBreakdown: {
+    impact: number;
+    recurrence: number;
+    evidence: number;
+    feasibility: number;
+  };
 }
 
 export interface AnalysisPayload {
@@ -113,9 +137,13 @@ export interface AnalysisPayload {
     asOf: string;
     rangeStart: string;
     rangeEnd: string;
+    comparisonStart: string;
+    comparisonEnd: string;
+    timezone: "Asia/Jakarta";
     sourceMode: OperationalDataset["sourceMode"];
     sourceName: string;
     fetchedAt: string;
+    sync: DataSyncMetadata;
   };
   health: {
     score: number;
@@ -142,6 +170,8 @@ export interface AnalysisPayload {
     divisions: string[];
     rolesByDivision: Record<string, string[]>;
     availableDates: string[];
+    minimumDate: string;
+    maximumDate: string;
   };
   functionalModules: FunctionalModule[];
   capacityZones: CapacityZone[];
@@ -154,6 +184,29 @@ export interface AnalysisPayload {
   pivotRows: PivotMetricRow[];
   warehouseComparison: WarehouseComparisonRow[];
   metricCatalog: Array<{ division: string; role: string; metric: string; detail: string }>;
+  economics: OperationsEconomics;
+}
+
+export interface OperationsEconomics {
+  verdict: "validated_saving" | "false_economy" | "undercoverage" | "process_loss" | "balanced" | "insufficient";
+  headline: string;
+  narrative: string;
+  requestedQty: number | null;
+  servedQty: number | null;
+  cancelledQty: number | null;
+  executionLossQty: number | null;
+  downstreamLossQty: number | null;
+  unservedDemandQty: number | null;
+  budgetMandays: number | null;
+  actualMandays: number | null;
+  mandaysDelta: number | null;
+  costToServeMdPerThousand: number | null;
+  previousCostToServeMdPerThousand: number | null;
+  costToServeDeltaPct: number | null;
+  serviceAdjustedProductivity: number | null;
+  capacityHeadroomPct: number | null;
+  evidence: string[];
+  guardrails: string[];
 }
 
 export interface FunctionalModule {
@@ -304,7 +357,7 @@ export interface SimulationInputs {
 export interface SimulationResult {
   productivityChange: number;
   slaChange: number;
-  fulfillmentChange: number;
+  demandFillChange: number;
   utilizationChange: number;
   mandaysGapChange: number;
   notes: string[];
