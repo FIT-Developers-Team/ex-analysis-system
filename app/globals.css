@@ -493,7 +493,11 @@ button { cursor: pointer; }
 .section-header h2 { margin: 0; font-size: var(--fs-xl); line-height: var(--lh-tight); letter-spacing: -.02em; }
 .section-header p { max-width: 760px; margin: 7px 0 0; color: var(--muted); font-size: var(--fs-sm); line-height: var(--lh-snug); }
 
+/* min-width on the copy column: a flex item defaults to min-width:auto, so a
+   long title pushed the intro past the viewport and .main-area's overflow-clip
+   silently cut the end off it on a phone. */
 .page-intro { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--sp-7); margin: var(--sp-1) 0 var(--sp-5); padding: var(--sp-2) 2px 2px; }
+.page-intro > div { min-width: 0; }
 .page-intro h1 { margin: 0; font-size: clamp(1.75rem, 2.6vw, 2.35rem); line-height: 1.1; letter-spacing: -.035em; }
 .page-intro p { max-width: 860px; margin: 10px 0 0; color: var(--muted); font-size: var(--fs-md); line-height: var(--lh-body); }
 .page-intro__meta { flex: none; display: inline-flex; align-items: center; gap: 7px; min-height: 42px; padding: var(--sp-2) var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--paper); color: var(--ink-2); font-size: var(--fs-xs); font-weight: 650; box-shadow: var(--shadow); }
@@ -1347,6 +1351,61 @@ button { cursor: pointer; }
 .floor-unmeasured em { padding: 3px 8px; border: 1px dashed var(--line-strong); border-radius: 20px; color: var(--muted); font-size: var(--fs-micro); font-style: normal; }
 
 /* ==========================================================================
+   Incentive conflicts (BSC vs Non-BSC)
+   ========================================================================== */
+
+.incentive-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: var(--sp-3); }
+.incentive-card { min-width: 0; padding: var(--sp-4) var(--sp-5); border: 1px solid var(--line); border-left: 3px solid var(--line-strong); border-radius: var(--r-lg); background: var(--paper); box-shadow: var(--shadow); }
+.incentive-card.is-active { border-left-color: var(--orange); }
+.incentive-card > header { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
+.incentive-card > header small { color: var(--faint); font-size: var(--fs-micro); }
+.incentive-pair { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: var(--sp-3); margin: var(--sp-3) 0; padding: var(--sp-3); border-radius: var(--r-md); background: var(--sunken); }
+.incentive-pair > svg { flex: none; color: var(--faint); }
+.incentive-pair span { display: block; color: var(--faint); font-size: var(--fs-micro); font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
+.incentive-pair strong { display: block; margin-top: 4px; color: var(--ink); font-size: var(--fs-xs); line-height: var(--lh-snug); }
+.incentive-card > p { margin: 0; color: var(--muted); font-size: var(--fs-sm); line-height: var(--lh-body); }
+.incentive-evidence { display: flex; flex-wrap: wrap; gap: 6px; margin-top: var(--sp-3); }
+.incentive-evidence span { padding: 4px 9px; border-radius: var(--r-sm); background: var(--orange-open); color: var(--orange-ink); font-size: var(--fs-micro); font-weight: 650; font-variant-numeric: tabular-nums; }
+.incentive-card > footer { display: flex; align-items: flex-start; gap: 7px; margin-top: var(--sp-3); padding-top: var(--sp-3); border-top: 1px solid var(--line-soft); color: var(--ink-2); font-size: var(--fs-xs); line-height: var(--lh-snug); }
+.incentive-card > footer svg { flex: none; margin-top: 2px; color: var(--blue); }
+
+.incentive-tag { padding: 3px 7px; border-radius: 20px; font-size: var(--fs-micro); font-style: normal; font-weight: 750; letter-spacing: .04em; }
+.incentive-tag--bsc { background: var(--teal-open); color: var(--teal-ink); }
+.incentive-tag--non_bsc { background: var(--sunken); color: var(--muted); }
+
+/* ==========================================================================
+   Scenario studio
+   ========================================================================== */
+
+.scenario-presets { display: grid; grid-template-columns: repeat(auto-fit, minmax(212px, 1fr)); gap: var(--sp-2); margin-bottom: var(--sp-3); }
+.scenario-presets button { display: grid; gap: 4px; padding: var(--sp-3) var(--sp-4); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--paper); text-align: left; box-shadow: var(--shadow); transition: border-color .15s var(--ease), background .15s var(--ease), transform .15s var(--ease); }
+.scenario-presets button:hover { border-color: var(--blue); transform: translateY(-2px); }
+.scenario-presets button.active { border-color: var(--blue); background: var(--blue-open); }
+.scenario-presets strong { color: var(--ink); font-size: var(--fs-sm); }
+.scenario-presets span { color: var(--muted); font-size: var(--fs-micro); line-height: var(--lh-snug); }
+
+.scenario-verdict { display: grid; grid-template-columns: minmax(0, 1.2fr) auto; align-items: center; gap: var(--sp-5); margin-bottom: var(--sp-3); padding: var(--sp-5); border: 1px solid var(--line); border-left: 4px solid var(--blue); border-radius: var(--r-xl); background: var(--paper); box-shadow: var(--shadow); }
+.scenario-verdict--labour { border-left-color: var(--orange); }
+.scenario-verdict--capacity { border-left-color: var(--gold); }
+.scenario-verdict h2 { margin: 5px 0 8px; font-size: var(--fs-xl); line-height: var(--lh-tight); letter-spacing: -.02em; }
+.scenario-verdict p { max-width: 78ch; margin: 0; color: var(--muted); font-size: var(--fs-sm); line-height: var(--lh-body); }
+.scenario-verdict__figures { display: grid; grid-auto-flow: column; gap: var(--sp-5); }
+.scenario-verdict__figures span, .scenario-verdict__figures strong, .scenario-verdict__figures small { display: block; }
+.scenario-verdict__figures span { color: var(--muted); font-size: var(--fs-micro); }
+.scenario-verdict__figures strong { margin: 4px 0 2px; font-size: var(--fs-2xl); letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.scenario-verdict__figures small { color: var(--faint); font-size: var(--fs-micro); }
+
+.scenario-right { display: grid; gap: var(--sp-3); min-width: 0; }
+.scenario-assumptions p { margin: 6px 0 0; }
+
+.scenario-table { display: grid; border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; }
+.scenario-row { display: grid; grid-template-columns: minmax(0, 1.6fr) repeat(3, minmax(0, 1fr)); gap: var(--sp-3); padding: 11px var(--sp-4); align-items: center; font-size: var(--fs-sm); }
+.scenario-row + .scenario-row { border-top: 1px solid var(--line-soft); }
+.scenario-row--head { background: var(--sunken); color: var(--faint); font-size: var(--fs-micro); font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
+.scenario-row b { font-variant-numeric: tabular-nums; font-weight: 700; }
+.scenario-row > span:first-child { color: var(--ink-2); }
+
+/* ==========================================================================
    Statistics, knowledge base, manpower
    ========================================================================== */
 
@@ -1494,6 +1553,9 @@ button { cursor: pointer; }
   .context-gap-grid { grid-template-columns: 1fr; }
   .control-chart-grid { grid-template-columns: 1fr; }
   .knowledge-grid { grid-template-columns: 1fr; }
+  .incentive-grid { grid-template-columns: 1fr; }
+  .scenario-verdict { grid-template-columns: 1fr; }
+  .scenario-verdict__figures { grid-auto-flow: row; grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .yield-strip { grid-template-columns: 1fr 1fr; }
   .yield-strip div:nth-child(3) { border-left: 0; }
   .yield-strip div:nth-child(n+3) { border-top: 1px solid var(--line); }
@@ -1727,6 +1789,16 @@ button { cursor: pointer; }
   .knowledge-toolbar { align-items: stretch; flex-direction: column; }
   .knowledge-toolbar .search-box { width: 100%; max-width: none; }
   .knowledge-card { padding-inline: var(--sp-4); }
+  .incentive-card { padding-inline: var(--sp-4); }
+  .incentive-pair { grid-template-columns: 1fr; }
+  .incentive-pair > svg { transform: rotate(90deg); justify-self: start; }
+  .scenario-verdict { padding: var(--sp-4); }
+  .scenario-verdict__figures { grid-template-columns: 1fr; gap: var(--sp-3); }
+  .scenario-presets { grid-template-columns: 1fr; }
+  /* Four columns of numbers do not fit; each row becomes a stacked block. */
+  .scenario-row { grid-template-columns: 1fr 1fr; row-gap: 6px; }
+  .scenario-row > span:first-child { grid-column: 1 / -1; font-weight: 700; }
+  .scenario-row--head { display: none; }
   .initiative-prize > div { padding-inline: var(--sp-4); }
   .initiative-stations { padding-inline: var(--sp-4); }
 }

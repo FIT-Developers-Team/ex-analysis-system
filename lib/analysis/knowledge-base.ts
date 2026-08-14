@@ -24,7 +24,8 @@ const process = (
   summary: string,
   body: string[],
   relatedStationIds: string[] = [],
-): KnowledgeArticle => ({ id, group: "Proses", domain, title, summary, body, formula: null, basis: null, relatedStationIds });
+  group: KnowledgeArticle["group"] = "Proses",
+): KnowledgeArticle => ({ id, group, domain, title, summary, body, formula: null, basis: null, relatedStationIds });
 
 const formula = (
   id: string,
@@ -44,9 +45,37 @@ const rule = (
   summary: string,
   body: string[],
   basis: string,
-): KnowledgeArticle => ({ id, group: "Aturan", domain, title, summary, body, formula: null, basis, relatedStationIds: [] });
+  group: KnowledgeArticle["group"] = "Aturan",
+): KnowledgeArticle => ({ id, group, domain, title, summary, body, formula: null, basis, relatedStationIds: [] });
 
 export const KNOWLEDGE_BASE: KnowledgeArticle[] = [
+  /* --- Istilah ------------------------------------------------------------ */
+  process(
+    "term-abbreviations", "Istilah", "Singkatan yang dipakai setiap hari",
+    "Empat singkatan yang muncul di hampir semua layar, dan satu yang menentukan gaji orang.",
+    [
+      "PO — Purchase Order. Dokumen pembelian ke vendor; ini sisi masuk. Satu PO satu slot dock, supaya selisihnya bisa ditelusuri ke vendor yang benar.",
+      "SO — Supply Order. Permintaan pasokan dari toko atau hub; ini sisi keluar. Yang dibatalkan pada 'permintaan dibatalkan' adalah SO, bukan order pelanggan akhir.",
+      "SLOC — Storage Location. Alamat rak tempat barang benar-benar berada. Qty benar di SLOC salah tetap membuat picker gagal, dan itulah sebabnya akurasi diukur sebagai SLOC × qty, bukan qty saja.",
+      "RTS — Ready To Ship. Titik tanggung jawab gudang berakhir; setelah ini milik fleet dan hub.",
+      "Pickface — lokasi ambil cepat di ketinggian kerja. Isinya dijaga replenishment; kalau kosong, picker pergi ke lokasi cadangan dan produktivitas turun tanpa ada yang bekerja lebih lambat.",
+    ],
+    [],
+    "Istilah",
+  ),
+  rule(
+    "term-bsc", "Istilah", "BSC dan Non-BSC",
+    "BSC adalah metrik yang membawa bonus insentif. Non-BSC tidak. Perbedaannya menentukan perilaku, bukan hanya pelaporan.",
+    [
+      "Yang dibayar akan dikejar. Itu bukan sinisme, itu desain skema—dan artinya metrik BSC perlu dibaca dengan pertanyaan tambahan: apa yang mengecil ketika angka ini membesar?",
+      "Skema saat ini memberi bonus pada produktivitas, SLA, ketepatan kirim, dan seluruh rasio kehilangan. Porsi permintaan yang benar-benar dilayani tidak masuk skema.",
+      "Akibatnya bisa diperkirakan: membatalkan SO mengecilkan penyebut hampir semua metrik berbonus sekaligus, dan satu-satunya angka yang memburuk tidak dibayar.",
+      "Setiap metrik BSC di halaman Data & definisi diberi tanda. Bacalah selalu berpasangan dengan angka yang menanggung biayanya.",
+    ],
+    "Kolom remarks pada glossary sumber, dibaca apa adanya.",
+    "Istilah",
+  ),
+
   /* --- Proses: inbound ---------------------------------------------------- */
   process(
     "proc-dock-schedule", "Inbound", "Menyusun jadwal dock",

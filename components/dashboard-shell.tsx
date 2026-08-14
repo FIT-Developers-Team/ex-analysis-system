@@ -44,6 +44,7 @@ import {
   LaborBalanceChart,
   RelationshipChart,
   RiskHeatmapChart,
+  SimulationCapacityChart,
   SimulationImpactChart,
   TrendChart,
   VolumeFlowChart,
@@ -52,7 +53,7 @@ import {
 import { KpiCard } from "@/components/kpi-card";
 import { OperationsFlow } from "@/components/operations-flow";
 import { runSimulation } from "@/lib/analysis/simulation";
-import type { AnalysisPayload, DecisionInsight, FloorSignal, FloorStation, Period, SimulationInputs, WarehouseCode } from "@/lib/types";
+import type { AnalysisPayload, DecisionInsight, FloorSignal, FloorStation, Period, SimulationDelta, SimulationInputs, WarehouseCode } from "@/lib/types";
 import { PRIORITY_WAREHOUSES } from "@/lib/types";
 
 type View = "overview" | "floor" | "flow" | "relationships" | "simulation" | "initiatives" | "knowledge" | "data";
@@ -752,6 +753,33 @@ function RelationshipLab({ data }: { data: AnalysisPayload }) {
         </div>
       </section>
 
+      <section className="section-block">
+        <SectionHeader
+          eyebrow="Bonus & perilaku"
+          title="Di mana skema bonus menarik ke arah berbeda"
+          description="BSC = metrik berbonus, Non-BSC = tanpa bonus, diambil langsung dari kolom remarks glossary. Ini bukan tuduhan; ini akibat yang bisa diperkirakan dari skemanya."
+        />
+        <div className="incentive-grid">
+          {data.incentiveConflicts.map((conflict) => (
+            <article className={`incentive-card${conflict.active ? " is-active" : ""}`} key={conflict.id}>
+              <header>
+                <span className={`status-pill status-pill--${conflict.active ? "critical" : "neutral"}`}>{conflict.active ? "Terlihat di data" : "Risiko struktural"}</span>
+                <small>{conflict.owner}</small>
+              </header>
+              <div className="incentive-pair">
+                <div><span>Membaik (BSC)</span><strong>{conflict.bscLabel}</strong></div>
+                <ArrowRight size={16} />
+                <div><span>Dibayar oleh (Non-BSC)</span><strong>{conflict.exposedLabel}</strong></div>
+              </div>
+              <p>{conflict.mechanism}</p>
+              {conflict.evidence.length > 0 && <div className="incentive-evidence">{conflict.evidence.map((item) => <span key={item}>{item}</span>)}</div>}
+              <footer><Target size={14} /><span>{conflict.guardrail}</span></footer>
+            </article>
+          ))}
+          {!data.incentiveConflicts.length && <div className="panel empty-state"><CheckCircle2 size={18} /><p>Tidak ada metrik berbonus yang teridentifikasi pada glossary.</p></div>}
+        </div>
+      </section>
+
       <section className="panel">
         <SectionHeader eyebrow="Ambang" title="Tarik-menarik yang wajib dijaga" />
         <div className="guardrail-grid"><div><strong>Volume ↓, MP tetap</strong><span>Produktivitas bisa turun tanpa ada yang salah di proses.</span></div><div><strong>MP ↑</strong><span>SLA membaik, tapi hasil per orang bisa ikut turun.</span></div><div><strong>Actual MD &lt; budget</strong><span>Hemat hanya sah kalau SLA dan produktivitas ikut sehat.</span></div><div><strong>Cancel ↑</strong><span>Harus dibuktikan dengan sisa kapasitas, sisa jam, dan laju kerja.</span></div><div><strong>DCC ↓</strong><span>Telusuri SLOC, replenish, troubleshoot, Pick-to-PF, lalu picker.</span></div><div><strong>Capacity ≥ 92%</strong><span>Tambah volume atau orang berisiko membuat macet.</span></div></div>
@@ -760,34 +788,143 @@ function RelationshipLab({ data }: { data: AnalysisPayload }) {
   );
 }
 
+const ZERO_SIMULATION: SimulationInputs = { demandChange: 0, cancelChange: 0, processGain: 0, pickerMandaysChange: 0, packerMandaysChange: 0, loaderMandaysChange: 0 };
+
+/** Ready-made questions. Most people do not arrive with six slider positions in
+ *  mind; they arrive with a question somebody asked them in a meeting. */
+const SCENARIO_PRESETS: Array<{ id: string; label: string; question: string; inputs: SimulationInputs }> = [
+  { id: "no-cancel", label: "Berhenti membatalkan", question: "Kalau pembatalan ditahan ke nol, sanggup tidak?", inputs: { ...ZERO_SIMULATION, cancelChange: -100 } },
+  { id: "peak", label: "Hari puncak", question: "Permintaan naik 25%, siapa yang jebol duluan?", inputs: { ...ZERO_SIMULATION, demandChange: 25 } },
+  { id: "short-staff", label: "Kurang orang", question: "Picker berkurang 15%, apa yang hilang?", inputs: { ...ZERO_SIMULATION, pickerMandaysChange: -15 } },
+  { id: "method", label: "Proses membaik", question: "Pickface siap dan device cukup, laju +10%. Berapa nilainya?", inputs: { ...ZERO_SIMULATION, processGain: 10 } },
+];
+
+function fmtScenario(unit: SimulationDelta["unit"], value: number | null): string {
+  if (value === null) return "—";
+  if (unit === "pp") return `${value.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%`;
+  if (unit === "unit") return Math.round(value).toLocaleString("id-ID");
+  if (unit === "manday") return `${value.toLocaleString("id-ID", { maximumFractionDigits: 1 })} MD`;
+  return value.toLocaleString("id-ID", { maximumFractionDigits: 2 });
+}
+
 function ScenarioStudio({ data }: { data: AnalysisPayload }) {
-  const [inputs, setInputs] = useState<SimulationInputs>({ forecastChange: 0, attendanceChange: 0, cancelChange: 0, processGain: 0 });
-  const find = (key: string, fallback: number) => data.kpis.find((item) => item.key === key)?.value ?? fallback;
-  const baseline = { productivityAttainment: find("productivity_attainment", 90), sla: find("sla_checker_inbound", 95), demandFill: find("demand_fill_rate", 97), utilization: find("capacity_utilization", 75), mandaysGap: find("mandays_variance", 0) };
-  const result = runSimulation(baseline, inputs);
-  const controls: Array<{ key: keyof SimulationInputs; label: string; hint: string; min: number; max: number }> = [
-    { key: "forecastChange", label: "Volume aktual", hint: "Perubahan workload yang masuk", min: -30, max: 35 },
-    { key: "attendanceChange", label: "Kehadiran / mandays", hint: "Perubahan jumlah orang yang tersedia", min: -20, max: 20 },
-    { key: "cancelChange", label: "Perubahan cancel", hint: "Negatif berarti cancel turun", min: -10, max: 10 },
-    { key: "processGain", label: "Perbaikan proses", hint: "Dampak pickface, travel, rework, atau sistem", min: 0, max: 20 },
+  const [inputs, setInputs] = useState<SimulationInputs>(ZERO_SIMULATION);
+  const [activePreset, setActivePreset] = useState<string | null>(null);
+  const result = useMemo(() => runSimulation(data.simulationBaseline, inputs), [data.simulationBaseline, inputs]);
+  const set = (key: keyof SimulationInputs, value: number) => { setActivePreset(null); setInputs((current) => ({ ...current, [key]: value })); };
+  const applyPreset = (preset: (typeof SCENARIO_PRESETS)[number]) => {
+    // "Stop cancelling" means down to zero, whatever the current rate happens to be.
+    const cancelChange = preset.id === "no-cancel" ? -(data.simulationBaseline.cancelPct ?? 0) : preset.inputs.cancelChange;
+    setInputs({ ...preset.inputs, cancelChange });
+    setActivePreset(preset.id);
+  };
+
+  const controls: Array<{ key: keyof SimulationInputs; label: string; hint: string; min: number; max: number; suffix: string }> = [
+    { key: "demandChange", label: "Permintaan masuk", hint: "SO sebelum pembatalan", min: -40, max: 50, suffix: "%" },
+    { key: "cancelChange", label: "Pembatalan", hint: "Perubahan poin dari tingkat sekarang", min: -30, max: 20, suffix: " poin" },
+    { key: "processGain", label: "Laju kerja", hint: "Pickface siap, device cukup, metode lebih baik", min: -20, max: 30, suffix: "%" },
+    { key: "pickerMandaysChange", label: "Manday picker", hint: "Orang di lantai picking", min: -40, max: 40, suffix: "%" },
+    { key: "packerMandaysChange", label: "Manday packer", hint: "Orang di meja packing", min: -40, max: 40, suffix: "%" },
+    { key: "loaderMandaysChange", label: "Manday loader", hint: "Orang di dock loading", min: -40, max: 40, suffix: "%" },
   ];
+
+  if (!result.available) {
+    return (
+      <>
+        <PageIntro eyebrow="Simulasi" title="Uji keputusan sebelum diterapkan" description="Kapasitas dihitung dari manday dikali target produktivitas dari sumber." meta={data.context.warehouse} />
+        <section className="panel empty-state"><AlertTriangle size={20} /><p>{result.unavailableReason}</p></section>
+      </>
+    );
+  }
+
+  const number = (value: number | null, digits = 0) => value === null ? "—" : value.toLocaleString("id-ID", { maximumFractionDigits: digits });
+
   return (
     <>
-      <PageIntro eyebrow="Simulasi" title="Uji keputusan sebelum diterapkan" description="Lihat arah dampaknya sebelum diputuskan di lapangan." meta={`${data.context.warehouse} · ${periodLabels[data.context.period]}`} />
-      <section className="simulation-layout">
-        <div className="panel controls-panel">
-          <div className="simulation-baseline"><SlidersHorizontal size={18} /><div><strong>Baseline {data.context.warehouse}</strong><span>Cut-off {fmtDate(data.context.asOf)}</span></div></div>
-          {controls.map((control) => <label className="range-control" key={control.key}><div><span>{control.label}</span><output>{fmtSigned(inputs[control.key])}</output></div><p>{control.hint}</p><input type="range" min={control.min} max={control.max} step="1" value={inputs[control.key]} onChange={(event) => setInputs((current) => ({ ...current, [control.key]: Number(event.target.value) }))} /><div className="range-bounds"><span>{control.min}%</span><span>{control.max}%</span></div></label>)}
-          <button className="secondary-button" onClick={() => setInputs({ forecastChange: 0, attendanceChange: 0, cancelChange: 0, processGain: 0 })}>Atur ulang</button>
+      <PageIntro
+        eyebrow="Simulasi"
+        title="Uji keputusan sebelum diterapkan"
+        description="Bukan tebakan. Kemampuan tiap peran = manday × target produktivitas dari sumber, lalu diambil yang paling kecil di antara permintaan, orang, dan batas kapasitas."
+        meta={`${data.context.warehouse} · ${fmtDate(data.context.rangeStart)} — ${fmtDate(data.context.rangeEnd)}`}
+      />
+
+      <section className="scenario-presets" aria-label="Pertanyaan siap pakai">
+        {SCENARIO_PRESETS.map((preset) => (
+          <button type="button" key={preset.id} className={activePreset === preset.id ? "active" : ""} onClick={() => applyPreset(preset)}>
+            <strong>{preset.label}</strong><span>{preset.question}</span>
+          </button>
+        ))}
+      </section>
+
+      <section className={`scenario-verdict scenario-verdict--${result.scenario.constraint}`} aria-live="polite">
+        <div className="scenario-verdict__copy">
+          <span className="eyebrow">Yang membatasi</span>
+          <h2>{result.scenario.constraintLabel}</h2>
+          <p>{result.notes[0]}</p>
         </div>
-        <div className="panel chart-panel simulation-chart-panel">
-          <SectionHeader eyebrow="Dampak arah" title="Perubahan terhadap baseline" description="Positif atau negatif adalah perubahan poin, bukan nilai akhir." />
-          <SimulationImpactChart result={result} />
-          <div className="model-notes model-notes--light"><strong>Catatan model</strong>{result.notes.map((note) => <p key={note}><Info size={14} />{note}</p>)}</div>
+        <div className="scenario-verdict__figures">
+          <div><span>Terlayani</span><strong>{number(result.scenario.served)}</strong><small>dari {number(result.scenario.demandBeforeCancel)} permintaan</small></div>
+          <div><span>Permintaan terlayani</span><strong>{number(result.scenario.demandFillPct, 1)}%</strong><small>sekarang {number(result.baseline.demandFillPct, 1)}%</small></div>
+          <div><span>Tidak terlayani</span><strong>{number(result.scenario.unserved)}</strong><small>sekarang {number(result.baseline.unserved)}</small></div>
         </div>
       </section>
-      <section className="baseline-grid"><div><span>Produktivitas</span><strong>{baseline.productivityAttainment.toFixed(1)}%</strong></div><div><span>SLA inbound</span><strong>{baseline.sla.toFixed(1)}%</strong></div><div><span>Demand fill</span><strong>{baseline.demandFill.toFixed(1)}%</strong></div><div><span>Kapasitas puncak</span><strong>{baseline.utilization.toFixed(1)}%</strong></div><div><span>Gap mandays</span><strong>{fmtSigned(baseline.mandaysGap)}</strong></div></section>
-      <section className="panel assumption-panel"><Target size={19} /><div><strong>Batas model</strong><p>Volume, orang, proses, dan kapasitas saling tarik-menarik. Hasil ini untuk memilih uji coba, bukan ramalan angka.</p></div></section>
+
+      <section className="simulation-layout">
+        <div className="panel controls-panel">
+          <div className="simulation-baseline"><SlidersHorizontal size={18} /><div><strong>Ubah satu per satu</strong><span>Titik awal = rentang yang sedang dibuka</span></div></div>
+          {controls.map((control) => (
+            <label className="range-control" key={control.key}>
+              <div><span>{control.label}</span><output>{inputs[control.key] > 0 ? "+" : ""}{inputs[control.key]}{control.suffix}</output></div>
+              <p>{control.hint}</p>
+              <input type="range" min={control.min} max={control.max} step="1" value={inputs[control.key]} onChange={(event) => set(control.key, Number(event.target.value))} />
+              <div className="range-bounds"><span>{control.min}</span><span>{control.max}</span></div>
+            </label>
+          ))}
+          <button className="secondary-button" onClick={() => { setInputs(ZERO_SIMULATION); setActivePreset(null); }}>Kembali ke kondisi sekarang</button>
+        </div>
+
+        <div className="scenario-right">
+          <div className="panel chart-panel">
+            <SectionHeader eyebrow="Rantai kapasitas" title="Siapa yang jebol duluan" description="Batang = kemampuan tiap peran. Garis = permintaan setelah pembatalan. Batang di bawah garis adalah penahannya." />
+            <SimulationCapacityChart scenario={result.scenario} />
+          </div>
+          <div className="panel chart-panel">
+            <SectionHeader eyebrow="Selisih" title="Perubahan terhadap kondisi sekarang" />
+            <SimulationImpactChart result={result} />
+          </div>
+        </div>
+      </section>
+
+      <section className="panel">
+        <SectionHeader eyebrow="Angka" title="Sebelum dan sesudah" />
+        <div className="scenario-table" role="table" aria-label="Perbandingan skenario">
+          <div className="scenario-row scenario-row--head" role="row">{["Ukuran", "Sekarang", "Skenario", "Selisih"].map((head) => <span role="columnheader" key={head}>{head}</span>)}</div>
+          {result.deltas.map((item) => (
+            <div className="scenario-row" role="row" key={item.key}>
+              <span role="cell">{item.label}</span>
+              <b role="cell">{fmtScenario(item.unit, item.baseline)}</b>
+              <b role="cell">{fmtScenario(item.unit, item.scenario)}</b>
+              <span role="cell" className={`movement movement--${item.direction === "better" ? "improving" : item.direction === "worse" ? "worsening" : "stable"}`}>
+                {item.direction === "flat" ? "tetap" : `${item.change > 0 ? "+" : ""}${fmtScenario(item.unit, item.change)}`}
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="split-grid">
+        <div className="panel">
+          <SectionHeader eyebrow="Bacaan" title="Yang perlu dicatat" />
+          <div className="model-notes model-notes--light">{result.notes.map((note) => <p key={note}><Info size={14} />{note}</p>)}</div>
+        </div>
+        <div className="panel assumption-panel scenario-assumptions">
+          <Target size={19} />
+          <div>
+            <strong>Asumsi model, semuanya</strong>
+            {result.assumptions.map((item) => <p key={item}>{item}</p>)}
+          </div>
+        </div>
+      </section>
     </>
   );
 }
@@ -876,7 +1013,7 @@ function StatisticsReadout({ data, compact = false }: { data: AnalysisPayload; c
 }
 
 function KnowledgeBase({ data }: { data: AnalysisPayload }) {
-  const [group, setGroup] = useState<"Proses" | "Rumus" | "Aturan">("Proses");
+  const [group, setGroup] = useState<AnalysisPayload["knowledgeBase"][number]["group"]>("Istilah");
   const [query, setQuery] = useState("");
   const articles = useMemo(() => data.knowledgeBase.filter((item) => {
     const matchesGroup = item.group === group;
@@ -885,6 +1022,7 @@ function KnowledgeBase({ data }: { data: AnalysisPayload }) {
   }), [data.knowledgeBase, group, query]);
   const domains = [...new Set(articles.map((item) => item.domain))];
   const groupHint: Record<typeof group, string> = {
+    Istilah: "Singkatan dan penamaan yang dipakai di semua layar.",
     Proses: "Cara kerjanya dijalankan. Termasuk langkah yang belum terukur di sheet.",
     Rumus: "Setiap angka yang dihitung sistem ini, ditulis apa adanya.",
     Aturan: "Apa yang boleh dan tidak boleh disimpulkan dari sebuah angka.",
@@ -905,7 +1043,7 @@ function KnowledgeBase({ data }: { data: AnalysisPayload }) {
 
       <div className="knowledge-toolbar">
         <div className="segmented-control" aria-label="Pilih jenis catatan">
-          {(["Proses", "Rumus", "Aturan"] as const).map((item) => <button type="button" key={item} className={group === item ? "active" : ""} onClick={() => setGroup(item)}>{item}</button>)}
+          {(["Istilah", "Proses", "Rumus", "Aturan"] as const).map((item) => <button type="button" key={item} className={group === item ? "active" : ""} onClick={() => setGroup(item)}>{item}</button>)}
         </div>
         <div className="search-box"><Search size={17} /><input aria-label="Cari catatan" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari proses, rumus, atau aturan" /><span>{articles.length}</span></div>
       </div>
@@ -952,6 +1090,7 @@ function MetricRegistry({ data }: { data: AnalysisPayload }) {
         <article><span>Diagnostik</span><strong>{data.intelligence.diagnosticMetrics}</strong><small>perlu bukti pendamping</small></article>
         <article><span>Observasi</span><strong>{data.intelligence.observationalMetrics}</strong><small>konteks, volume, atau plan</small></article>
         <article className={data.intelligence.unconfirmedMetrics ? "semantic-summary--warning" : ""}><span>Belum terkonfirmasi</span><strong>{data.intelligence.unconfirmedMetrics}</strong><small>tidak memicu rekomendasi</small></article>
+        <article><span>Berbonus (BSC)</span><strong>{data.intelligence.bscMetrics}</strong><small>dari {data.intelligence.bscMetrics + data.intelligence.nonBscMetrics} yang ditandai</small></article>
         <article><span>Cakupan makna</span><strong>{data.intelligence.semanticCoveragePct}%</strong><small>punya konteks yang dapat dipakai</small></article>
       </section>
       <section className="definition-evidence-strip" aria-label="Kualitas definisi metric">
@@ -983,7 +1122,7 @@ function MetricRegistry({ data }: { data: AnalysisPayload }) {
         <SectionHeader eyebrow="Kamus metrik" title="Definisi dan aturan pakai" description="Metrik belum pasti tetap terlihat, tetapi tidak memicu skor atau aksi." action={<div className="segmented-control semantic-filter" aria-label="Filter kesiapan metrik"><button className={readiness === "all" ? "active" : ""} onClick={() => setReadiness("all")}>Semua</button><button className={readiness === "decision_ready" ? "active" : ""} onClick={() => setReadiness("decision_ready")}>Siap</button><button className={readiness === "diagnostic_only" ? "active" : ""} onClick={() => setReadiness("diagnostic_only")}>Diagnostik</button><button className={readiness === "observational" ? "active" : ""} onClick={() => setReadiness("observational")}>Observasi</button><button className={readiness === "unconfirmed" ? "active" : ""} onClick={() => setReadiness("unconfirmed")}>Belum pasti</button></div>} />
         <div className="semantic-toolbar"><div className="search-box"><Search size={17} /><input aria-label="Cari definisi metrik" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari metrik, definisi, fungsi, atau catatan" /><span>{filteredSemantics.length}</span></div><small>{filteredSemantics.filter((item) => item.activeCoverage > 0).length} metrik aktif</small></div>
         <div className="semantic-list">
-          {filteredSemantics.slice(0, 160).map((item) => <details className={`semantic-item semantic-item--${item.readiness}`} key={item.id}><summary><div><span>{item.division} · {item.role}{item.remarks ? ` · ${item.remarks}` : ""}</span><strong>{item.metric}</strong></div><div><b>{readinessLabel[item.readiness]}</b><small>{definitionStatusLabel[item.definitionStatus]} · {Math.round(item.activeCoverage * 100)}% coverage</small><ChevronDown size={15} /></div></summary><div className="semantic-item__body"><section><span>Definisi · {definitionStatusLabel[item.definitionStatus]}</span><p>{item.definition}</p>{item.inferenceBasis && <small>Dasar: {item.inferenceBasis} · keyakinan {item.definitionConfidence}</small>}</section><section><span>Dipakai untuk</span><p>{item.decisionUse}</p></section><section><span>Posisi metric</span><p>{item.decisionRole} · {item.family} · {item.polarity.replaceAll("_", " ")}{item.remarks ? ` · ${item.remarks}` : ""}</p></section><section><span>Harus dibaca bersama</span><p>{item.relatedMetrics.join(" · ")}</p></section>{item.requiredContext.length > 0 && <section><span>Konteks yang masih dibutuhkan</span><p>{item.requiredContext.join(" · ")}</p></section>}{item.caveat && <div className="semantic-caveat"><AlertTriangle size={14} /><p>{item.caveat}</p></div>}</div></details>)}
+          {filteredSemantics.slice(0, 160).map((item) => <details className={`semantic-item semantic-item--${item.readiness}`} key={item.id}><summary><div><span>{item.division} · {item.role}{item.remarks ? ` · ${item.remarks}` : ""}</span><strong>{item.metric}</strong></div><div>{item.incentive !== "unset" && <em className={`incentive-tag incentive-tag--${item.incentive}`}>{item.incentive === "bsc" ? "BSC" : "Non-BSC"}</em>}<b>{readinessLabel[item.readiness]}</b><small>{definitionStatusLabel[item.definitionStatus]} · {Math.round(item.activeCoverage * 100)}% coverage</small><ChevronDown size={15} /></div></summary><div className="semantic-item__body"><section><span>Definisi · {definitionStatusLabel[item.definitionStatus]}</span><p>{item.definition}</p>{item.inferenceBasis && <small>Dasar: {item.inferenceBasis} · keyakinan {item.definitionConfidence}</small>}</section><section><span>Dipakai untuk</span><p>{item.decisionUse}</p></section><section><span>Posisi metric</span><p>{item.decisionRole} · {item.family} · {item.polarity.replaceAll("_", " ")}</p></section><section><span>Skema bonus</span><p>{item.incentive === "bsc" ? "BSC — metrik ini membawa bonus insentif, jadi perilaku di sekitarnya akan mengikutinya." : item.incentive === "non_bsc" ? "Non-BSC — tanpa bonus insentif." : "Belum ditandai di glossary."}</p></section><section><span>Harus dibaca bersama</span><p>{item.relatedMetrics.join(" · ")}</p></section>{item.requiredContext.length > 0 && <section><span>Konteks yang masih dibutuhkan</span><p>{item.requiredContext.join(" · ")}</p></section>}{item.caveat && <div className="semantic-caveat"><AlertTriangle size={14} /><p>{item.caveat}</p></div>}</div></details>)}
           {!filteredSemantics.length && <div className="empty-state"><Info size={18} /><p>Tidak ada metrik yang cocok.</p></div>}
         </div>
       </section>}

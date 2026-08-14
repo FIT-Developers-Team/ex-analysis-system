@@ -12,6 +12,7 @@ import type {
   RelationshipSignal,
   RiskMatrix,
   SimulationResult,
+  SimulationScenario,
   TrendSeries,
   VolumeFlowPoint,
   WarehouseComparisonRow,
@@ -207,18 +208,89 @@ export function InitiativePriorityChart({ initiatives }: { initiatives: Initiati
   }} />;
 }
 
+/**
+ * The chain running at the speed of its slowest station. Each bar is a role's
+ * throughput; the marked line is the demand it has to absorb. Any bar under the
+ * line is where the flow stops, which is the one thing a staffing decision needs
+ * to know and the thing a list of percentages never says out loud.
+ */
+export function SimulationCapacityChart({ scenario }: { scenario: SimulationScenario }) {
+  const roles = scenario.roles;
+  const demand = scenario.demandAfterCancel;
+  const maximum = Math.max(demand, ...roles.map((role) => role.throughput)) * 1.12;
+  return <Chart height={Math.max(260, roles.length * 74)} option={{
+    animationDuration: 260,
+    tooltip: {
+      ...tooltip,
+      trigger: "item",
+      formatter: (params: { dataIndex: number }) => {
+        const role = roles[params.dataIndex];
+        return `<strong>${role.role}</strong><br/>Kemampuan <strong>${number(role.throughput)}</strong> unit<br/>${number(role.mandays, 1)} manday × ${number(role.ratePerManday)} / manday<br/>Butuh ${number(role.requiredMandays, 1)} manday untuk permintaan ini`;
+      },
+    },
+    grid: { left: 86, right: 96, top: 18, bottom: 34 },
+    xAxis: { type: "value", min: 0, max: maximum, axisLabel: { color: "#475569", fontSize: 11, formatter: (value: number) => Intl.NumberFormat("id-ID", { notation: "compact" }).format(value) }, splitLine: split },
+    yAxis: { type: "category", inverse: true, data: roles.map((role) => role.role), axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: "#334155", fontSize: 11, fontWeight: 600 } },
+    series: [{
+      type: "bar",
+      barWidth: 26,
+      data: roles.map((role) => ({
+        value: role.throughput,
+        itemStyle: {
+          color: role.binding ? palette[3] : role.throughput < demand ? palette[2] : palette[0],
+          borderColor: role.binding ? "#a83f2c" : role.throughput < demand ? "#a66100" : "#173fa5",
+          borderWidth: 1,
+          borderRadius: [0, 5, 5, 0],
+        },
+        label: { show: true, position: "right", distance: 8, color: "#334155", fontSize: 11, fontWeight: 700, formatter: ({ value }: { value: number }) => number(value) },
+      })),
+      emphasis: { focus: "self" },
+      markLine: {
+        symbol: "none",
+        silent: true,
+        data: [{ xAxis: Number(demand.toFixed(0)) }],
+        lineStyle: { color: "#0f1f35", width: 1.8, type: "solid" },
+        label: { formatter: `permintaan ${number(demand)}`, color: "#0f1f35", fontSize: 10, position: "insideEndTop" },
+      },
+    }],
+  }} />;
+}
+
 export function SimulationImpactChart({ result }: { result: SimulationResult }) {
-  const data = [
-    ["Produktivitas", result.productivityChange], ["SLA inbound", result.slaChange], ["Demand fill", result.demandFillChange], ["Beban kapasitas", result.utilizationChange], ["Gap mandays", result.mandaysGapChange],
-  ] as const;
-  const max = Math.max(10, ...data.map((item) => Math.abs(item[1])));
-  return <Chart height={300} option={{
+  // Percentage points and unit counts cannot share one axis, so the bars are
+  // normalised to percent-of-baseline and the real figures live in the labels.
+  const data = result.deltas
+    .filter((item) => item.baseline !== null && item.scenario !== null)
+    .map((item) => {
+      const relative = item.baseline ? (item.change / Math.abs(item.baseline)) * 100 : item.change;
+      const label = item.unit === "unit"
+        ? `${item.change > 0 ? "+" : ""}${number(item.change)}`
+        : `${item.change > 0 ? "+" : ""}${number(item.change, item.unit === "pp" ? 1 : 2)}${item.unit === "pp" ? " pp" : ""}`;
+      return { name: item.label, relative: Number(relative.toFixed(2)), label, better: item.direction === "better", flat: item.direction === "flat" };
+    });
+  const max = Math.max(5, ...data.map((item) => Math.abs(item.relative)));
+  return <Chart height={Math.max(280, data.length * 40)} option={{
     animationDuration: 220,
-    tooltip: { ...tooltip, trigger: "axis", axisPointer: { type: "shadow" }, valueFormatter: (value: number) => `${Number(value).toFixed(1)} pp` },
-    grid: { left: 124, right: 40, top: 10, bottom: 26 },
-    xAxis: { type: "value", min: -max, max, axisLabel: { color: "#475569", fontSize: 11, formatter: "{value} pp" }, splitLine: split },
-    yAxis: { type: "category", data: data.map((item) => item[0]), axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: "#334155", fontSize: 11, fontWeight: 600 } },
-    series: [{ type: "bar", barWidth: 16, data: data.map((item) => ({ value: item[1], itemStyle: { color: item[1] < 0 ? palette[3] : palette[0], borderColor: item[1] < 0 ? "#a83f2c" : "#173fa5", borderWidth: 1, borderRadius: item[1] < 0 ? [4, 0, 0, 4] : [0, 4, 4, 0] }, label: { show: true, position: item[1] < 0 ? "left" : "right", distance: 7, color: "#334155", fontSize: 11, fontWeight: 700, formatter: `${item[1] > 0 ? "+" : ""}${item[1].toFixed(1)}` } })), emphasis: { focus: "self" }, markLine: { symbol: "none", silent: true, data: [{ xAxis: 0 }], lineStyle: { color: "#475569", width: 1.2 } } }],
+    tooltip: { ...tooltip, trigger: "item", formatter: (params: { dataIndex: number }) => `<strong>${data[params.dataIndex]?.name}</strong><br/>${data[params.dataIndex]?.label} terhadap kondisi sekarang` },
+    grid: { left: 158, right: 76, top: 10, bottom: 30 },
+    xAxis: { type: "value", min: -max, max, axisLabel: { color: "#475569", fontSize: 11, formatter: "{value}%" }, splitLine: split },
+    yAxis: { type: "category", data: data.map((item) => item.name), axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: "#334155", fontSize: 11, fontWeight: 600, width: 146, overflow: "truncate" } },
+    series: [{
+      type: "bar",
+      barWidth: 15,
+      data: data.map((item) => ({
+        value: item.relative,
+        itemStyle: {
+          color: item.flat ? "#94a3b8" : item.better ? palette[1] : palette[3],
+          borderColor: item.flat ? "#64748b" : item.better ? "#0b6e65" : "#a83f2c",
+          borderWidth: 1,
+          borderRadius: item.relative < 0 ? [4, 0, 0, 4] : [0, 4, 4, 0],
+        },
+        label: { show: true, position: item.relative < 0 ? "left" : "right", distance: 7, color: "#334155", fontSize: 11, fontWeight: 700, formatter: item.label },
+      })),
+      emphasis: { focus: "self" },
+      markLine: { symbol: "none", silent: true, data: [{ xAxis: 0 }], lineStyle: { color: "#475569", width: 1.2 } },
+    }],
   }} />;
 }
 

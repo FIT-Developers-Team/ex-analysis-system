@@ -131,6 +131,32 @@ The yield chain adds cumulative yield and each step's share of total loss, so th
 
 Sigma comes from the moving range rather than the standard deviation on purpose: a genuine process shift inflates sd, widening the limits enough to hide itself.
 
+## Incentives: BSC and Non-BSC
+
+The glossary's `remarks` column marks 32 metrics as **BSC** — the set that carries an incentive bonus — and the rest as Non-BSC. The engine reads that classification rather than inferring it, badges it in the registry, and uses it to detect a structural problem the KPI cards cannot see.
+
+The bonus set rewards productivity, SLA, dispatch punctuality, and every loss *ratio*. It does not include the size of the demand those ratios are measured over. Cancelling a Supply Order therefore shrinks the denominator of several bonus metrics at once — productivity rises because hard orders disappear, pick-to-lost and staging-loss ratios improve because less is handled, dispatch punctuality improves because less is shipped — while the only figure that worsens, the share of demand actually served, pays nothing.
+
+This is not an accusation of gaming. It is a predictable consequence of the scheme, and naming it is cheaper than discovering it through behaviour. Each conflict pairs the bonus metric with the metric that pays for it, states the mechanism, and is marked `active` only when the window's own numbers show the pattern.
+
+## Scenario model
+
+The simulation is arithmetic on the warehouse's own identities, not fitted coefficients:
+
+```
+demand'      = demand × (1 + demandChange)
+afterCancel' = demand' × (1 − cancelRate')
+throughput_r = mandays_r × demonstratedRate_r × (1 + processGain)
+ceiling      = min(afterCancel', min_r throughput_r, physical capacity)
+served       = ceiling × executionYield
+```
+
+Capacity is projected from the rate each bench **actually achieved**, not from its target. The first draft used the target and immediately produced a false answer: PGS packers beat their target by 5%, so a target-rate model declared packing the constraint on a day it was comfortably keeping up. Attainment is still scored against the target, so beating it reads as a win rather than a lowered bar.
+
+`executionYield` is the single calibration — observed served divided by the model's own ceiling on the active window. It absorbs every loss the model does not name and is held constant, which is stated in the assumptions panel rather than hidden. It is capped at 1: a yield above 100% means the ceiling is wrong, not that the warehouse is superhuman.
+
+The chain runs at the speed of its slowest station, so the model names the binding constraint — demand, a specific role, or physical capacity. This matters more than any percentage it prints. On PGS the model shows only ~199 units of spare capacity at the tightest bench, which means the 18,765 units that "stopping cancellation" would return to the order book cannot currently be served: they would move from cancelled to unserved. The cancellation initiative now carries both figures, because publishing the first without the second is how a warehouse gets told to stop cancelling and simply fails the orders instead.
+
 ## Knowledge base
 
 `lib/analysis/knowledge-base.ts` holds the operating doctrine as three kinds of article, kept apart because they carry different authority:

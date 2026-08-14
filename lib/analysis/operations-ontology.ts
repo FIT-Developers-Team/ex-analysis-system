@@ -343,6 +343,18 @@ function relatedMetricsFor(metric: string, family: MetricFamily): string[] {
   return related[family];
 }
 
+/**
+ * BSC / Non-BSC comes straight from the glossary remarks column. It is read, not
+ * inferred: guessing which metrics carry a bonus would be guessing at somebody's
+ * pay.
+ */
+function incentiveFor(remarks: string | undefined): OperationalMetricSemantic["incentive"] {
+  const value = normalizeLabel(remarks ?? "");
+  if (value === "bsc") return "bsc";
+  if (value === "non bsc" || value === "nonbsc") return "non_bsc";
+  return "unset";
+}
+
 export function buildMetricSemantic(input: CatalogInput): OperationalMetricSemantic {
   const glossary = glossaryFor(input);
   const family = familyFor(input.metric, input.division);
@@ -365,6 +377,7 @@ export function buildMetricSemantic(input: CatalogInput): OperationalMetricSeman
     decisionRole,
     readiness,
     polarity: polarityFor(input.metric),
+    incentive: incentiveFor(input.remarks ?? glossary?.remarks),
     definition: resolution.definition,
     definitionStatus: resolution.status,
     definitionConfidence: resolution.confidence,

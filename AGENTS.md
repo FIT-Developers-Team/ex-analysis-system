@@ -111,7 +111,21 @@ change requires breaking one, say so explicitly rather than quietly relaxing it.
 - **A quantified action plan is arithmetic, not a promise.** `quantified` on an
   initiative restates the active window ("if cancel had been at target, this
   many units would have stayed"). It never projects what the initiative will
-  deliver, and the note on each entry says so.
+  deliver, and the note on each entry says so. Where the arithmetic implies a
+  recovery, the scenario model must also state how much of it the current
+  capacity can absorb — the two numbers cannot sit in the product disagreeing.
+- **The scenario model has no fitted parameters.** Every output traces to an
+  identity over measured inputs. If a new behaviour needs a coefficient, it does
+  not belong in the model; put it in the notes as a caveat instead.
+- **Capacity is projected from demonstrated rate, attainment from target rate.**
+  Mixing them up cost a full rebuild: a target-rate capacity model named packing
+  as PGS's constraint on a day packers were beating target by 5%.
+- **BSC is read, never inferred.** The glossary remarks column is the only source
+  of a metric's incentive class. Guessing which metrics carry a bonus is guessing
+  at somebody's pay.
+- **Terminology.** PO is Purchase Order (inbound), SO is Supply Order (outbound,
+  not a customer sales order), SLOC is Storage Location. BSC means the metric
+  carries an incentive bonus; Non-BSC means it does not.
 
 ## Data reality to keep in mind
 

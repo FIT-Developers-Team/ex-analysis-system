@@ -191,6 +191,8 @@ export interface AnalysisPayload {
   floorStations: FloorStation[];
   floorBriefing: FloorBriefing;
   statistics: OperationsStatistics;
+  simulationBaseline: SimulationBaselineInput;
+  incentiveConflicts: IncentiveConflict[];
   knowledgeBase: KnowledgeArticle[];
   contextGaps: DecisionCoverageGap[];
   causalChains: CausalChain[];
@@ -238,6 +240,31 @@ export interface CausalChain {
   linkedPainIds: string[];
 }
 
+/**
+ * Whether a metric carries an incentive bonus. Taken from the glossary's own
+ * remarks column, not inferred. This matters more than it looks: a metric people
+ * are paid on is managed differently from one they are not, and the pair of "a
+ * bonus metric that improves when a non-bonus metric is sacrificed" is a
+ * predictable failure mode rather than a personal one.
+ */
+export type IncentiveClass = "bsc" | "non_bsc" | "unset";
+
+export interface IncentiveConflict {
+  id: string;
+  /** The bonus-bearing metric that improves. */
+  bscKey: string;
+  bscLabel: string;
+  /** The metric that pays for it, which carries no bonus. */
+  exposedKey: string;
+  exposedLabel: string;
+  mechanism: string;
+  /** True when the current window actually shows the pattern, not just the risk. */
+  active: boolean;
+  evidence: string[];
+  guardrail: string;
+  owner: string;
+}
+
 export type MetricFamily = "people" | "volume" | "capacity" | "productivity" | "service" | "inventory-quality" | "cost" | "fleet" | "other";
 export type MetricDecisionRole = "outcome" | "driver" | "guardrail" | "context";
 export type MetricReadiness = "decision_ready" | "diagnostic_only" | "observational" | "unconfirmed";
@@ -254,6 +281,8 @@ export interface OperationalMetricSemantic {
   decisionRole: MetricDecisionRole;
   readiness: MetricReadiness;
   polarity: "higher_better" | "lower_better" | "neutral";
+  /** From the glossary remarks column: does this metric pay a bonus? */
+  incentive: IncentiveClass;
   definition: string;
   definitionStatus: DefinitionStatus;
   definitionConfidence: "high" | "medium" | "low";
@@ -285,6 +314,8 @@ export interface IntelligenceSummary {
   documentedDefinitions: number;
   inferredDefinitions: number;
   unresolvedDefinitions: number;
+  bscMetrics: number;
+  nonBscMetrics: number;
   domains: Array<{
     domain: string;
     totalMetrics: number;
@@ -612,7 +643,7 @@ export interface OperationsStatistics {
 
 export interface KnowledgeArticle {
   id: string;
-  group: "Proses" | "Rumus" | "Aturan";
+  group: "Istilah" | "Proses" | "Rumus" | "Aturan";
   domain: string;
   title: string;
   /** One sentence a new supervisor can act on. */
@@ -625,18 +656,110 @@ export interface KnowledgeArticle {
   relatedStationIds: string[];
 }
 
+/* ---------------------------------------------------------------------------
+   Scenario model.
+
+   Built on identities rather than coefficients. Throughput is mandays × the
+   source's own target rate; served is the smallest of demand, throughput, and
+   physical capacity, times an execution yield calibrated on the active window.
+   Nothing here has a fitted parameter, so every output can be traced back to a
+   number on the page.
+--------------------------------------------------------------------------- */
+
 export interface SimulationInputs {
-  forecastChange: number;
-  attendanceChange: number;
+  /** Change in incoming SO volume, before cancellation. Percent. */
+  demandChange: number;
+  /** Change in the cancellation rate, in percentage points. */
   cancelChange: number;
+  /** Change in output per manday from method, pickface readiness, or uptime. Percent. */
   processGain: number;
+  pickerMandaysChange: number;
+  packerMandaysChange: number;
+  loaderMandaysChange: number;
+}
+
+export interface SimulationRoleInput {
+  key: "picker" | "packer" | "loader";
+  role: string;
+  mandays: number | null;
+  /** Units per manday, from the source's target column. The agreed standard. */
+  targetRate: number | null;
+  /**
+   * Units per manday actually achieved in the window. Capacity is projected from
+   * this, not from the target: a bench that routinely beats its target is not a
+   * constraint, and one that routinely misses it will not suddenly hit it
+   * because a plan says so.
+   */
+  actualRate: number | null;
+}
+
+export interface SimulationBaselineInput {
+  demandBeforeCancel: number | null;
+  cancelPct: number | null;
+  served: number | null;
+  outboundCapacity: number | null;
+  roles: SimulationRoleInput[];
+}
+
+export interface SimulationRoleState {
+  key: string;
+  role: string;
+  mandays: number;
+  ratePerManday: number;
+  throughput: number;
+  /** Output per manday against target, at this scenario's served volume. */
+  attainmentPct: number;
+  /** Mandays this role would need to cover the scenario's demand on its own. */
+  requiredMandays: number;
+  binding: boolean;
+}
+
+export type SimulationConstraint = "demand" | "labour" | "capacity";
+
+export interface SimulationScenario {
+  demandBeforeCancel: number;
+  cancelPct: number;
+  demandAfterCancel: number;
+  cancelledQty: number;
+  /** Smallest of demand, labour throughput, and physical capacity. */
+  ceiling: number;
+  served: number;
+  unserved: number;
+  demandFillPct: number;
+  fulfillmentPct: number;
+  utilisationPct: number | null;
+  costToServe: number | null;
+  totalMandays: number;
+  roles: SimulationRoleState[];
+  constraint: SimulationConstraint;
+  constraintLabel: string;
+  /** Spare capacity at the binding station, in units. Negative means short. */
+  headroomUnits: number;
+}
+
+export interface SimulationDelta {
+  key: string;
+  label: string;
+  unit: "pp" | "unit" | "ratio" | "manday";
+  baseline: number | null;
+  scenario: number | null;
+  change: number;
+  direction: "better" | "worse" | "flat";
 }
 
 export interface SimulationResult {
-  productivityChange: number;
-  slaChange: number;
-  demandFillChange: number;
-  utilizationChange: number;
-  mandaysGapChange: number;
+  available: boolean;
+  unavailableReason: string | null;
+  baseline: SimulationScenario;
+  scenario: SimulationScenario;
+  deltas: SimulationDelta[];
+  /**
+   * Observed served ÷ the model's own ceiling on the active window. It absorbs
+   * every loss the model does not name — failed picks, quality rejects, cartons
+   * lost at staging — and is carried forward unchanged, which is the model's
+   * main assumption.
+   */
+  executionYieldPct: number;
   notes: string[];
+  assumptions: string[];
 }

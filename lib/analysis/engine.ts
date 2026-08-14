@@ -4,6 +4,7 @@ import { buildFloorBriefing, buildFloorStations, FLOOR_ENGINE_KEYS } from "@/lib
 import { buildKnowledgeBase } from "@/lib/analysis/knowledge-base";
 import { controlChart, forecastQuality, requiredMandays, variability, wilsonInterval, yieldChain } from "@/lib/analysis/operations-math";
 import { clamp, decayScore } from "@/lib/analysis/scoring";
+import { runSimulation } from "@/lib/analysis/simulation";
 import { PRIORITY_WAREHOUSES } from "@/lib/types";
 import type {
   AnalysisPayload,
@@ -16,6 +17,7 @@ import type {
   DriverSignal,
   FloorStation,
   FunctionalModule,
+  IncentiveConflict,
   Initiative,
   IntelligenceSummary,
   MetricPoint,
@@ -36,6 +38,7 @@ import type {
   PivotMetricRow,
   RelationshipSignal,
   RiskMatrix,
+  SimulationBaselineInput,
   VolumeFlowPoint,
   WarehouseComparisonRow,
 } from "@/lib/types";
@@ -509,6 +512,7 @@ function buildInitiatives(
   chains: CausalChain[],
   statistics: OperationsStatistics,
   stations: FloorStation[],
+  simulation: SimulationBaselineInput,
 ): Initiative[] {
   type ControlFields = Pick<Initiative, "valueLens" | "successGate" | "stopLoss">;
   type AdaptiveFields = Pick<Initiative, "adaptiveVariant" | "whyNow" | "trigger" | "linkedChainIds">;
@@ -588,8 +592,17 @@ function buildInitiatives(
     switch (key) {
       case "cancel": {
         const recoverable = economics.requestedQty !== null && cancel !== null && cancel > 2 ? economics.requestedQty * ((cancel - 2) / 100) : null;
+        // The arithmetic says how much demand comes back. The capacity model says
+        // how much of it can actually be served today. Publishing the first
+        // without the second is how a warehouse gets told to stop cancelling and
+        // then simply fails the orders instead.
+        const absorbable = cancel !== null && cancel > 2
+          ? Math.max(0, runSimulation(simulation, { demandChange: 0, cancelChange: -(cancel - 2), processGain: 0, pickerMandaysChange: 0, packerMandaysChange: 0, loaderMandaysChange: 0 }).scenario.served - (economics.servedQty ?? 0))
+          : 0;
+        const shortfall = recoverable === null ? null : Math.max(0, recoverable - absorbable);
         return [
           { label: "Bila batal turun ke 2%", value: units(recoverable), note: `${arithmetic} Dihitung dari permintaan awal ${units(economics.requestedQty)}.` },
+          { label: "Yang sanggup dilayani hari ini", value: units(absorbable), note: shortfall !== null && shortfall > 1 ? `Sisanya ${units(shortfall)} hanya berpindah dari dibatalkan menjadi tidak terlayani sampai kapasitas peran penahan ditambah.` : "Kapasitas saat ini sanggup menyerap seluruhnya." },
           { label: "Belum terlayani sekarang", value: units(economics.unservedDemandQty), note: `Permintaan terlayani ${formatPct(demandFill)} dari target 97%.` },
         ];
       }
@@ -1010,6 +1023,8 @@ function intelligenceSummary(catalog: OperationalMetricSemantic[]): Intelligence
     documentedDefinitions,
     inferredDefinitions,
     unresolvedDefinitions,
+    bscMetrics: catalog.filter((item) => item.incentive === "bsc").length,
+    nonBscMetrics: catalog.filter((item) => item.incentive === "non_bsc").length,
     domains,
     operatingRules: OPERATING_RULES,
   };
@@ -2088,6 +2103,133 @@ function decisionCoverageGaps(
 }
 
 /**
+ * The measured starting point for the scenario model. Rates come from the
+ * source's own target columns so the simulation never introduces a standard the
+ * warehouse has not already agreed to.
+ */
+function simulationBaseline(points: MetricPoint[], current: Window): SimulationBaselineInput {
+  const total = (key: string) => metricValue(points, key, current, "sum").value;
+  const rate = (key: string) => metricValue(points, key, current, "average").value;
+  return {
+    demandBeforeCancel: total("outbound_before_cancel"),
+    cancelPct: normalizePercent("cancel_rate", derived(points, "cancel_rate", current).value),
+    served: total("outbound_rts"),
+    outboundCapacity: metricValue(points, "outbound_capacity", current, "sum").value,
+    roles: [
+      { key: "picker", role: "Picker", mandays: total("actual_picker_mandays"), targetRate: rate("picker_productivity_target"), actualRate: rate("picker_productivity") },
+      { key: "packer", role: "Packer", mandays: total("actual_packer_mandays"), targetRate: rate("packer_productivity_target"), actualRate: rate("packer_productivity") },
+      { key: "loader", role: "Loader", mandays: total("actual_loader_mandays"), targetRate: rate("loader_productivity_target"), actualRate: rate("loader_productivity") },
+    ],
+  };
+}
+
+/**
+ * Where the bonus scheme and the operation pull in different directions.
+ *
+ * The glossary marks 32 metrics as BSC — the set people are paid on. Reading
+ * that set next to the rest exposes a structural problem the KPI cards cannot:
+ * fulfillment after cancellation, picker and dispatch punctuality, and every
+ * loss *ratio* carry a bonus, while the size of the demand those ratios are
+ * measured over does not. Cancelling an order improves several bonus metrics at
+ * once and damages one that pays nothing.
+ *
+ * This is not an accusation. It is a predictable consequence of the scheme, and
+ * naming it is cheaper than discovering it through behaviour. A conflict is only
+ * marked `active` when the window's own numbers show the pattern.
+ */
+function incentiveConflicts(kpis: MetricReading[], catalog: OperationalMetricSemantic[], economics: OperationsEconomics): IncentiveConflict[] {
+  const value = (key: string) => kpis.find((item) => item.key === key)?.value ?? null;
+  const pct = (input: number | null) => input === null ? "n/a" : `${input.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%`;
+  const units = (input: number | null) => input === null ? "n/a" : `${Math.round(input).toLocaleString("id-ID")} unit`;
+  const bscNames = new Set(catalog.filter((item) => item.incentive === "bsc").map((item) => normalizeLabel(item.metric)));
+  const isBsc = (...names: string[]) => names.some((name) => bscNames.has(normalizeLabel(name)));
+
+  const cancel = value("cancel_rate");
+  const demandFill = value("demand_fill_rate");
+  const fulfillment = value("fulfillment_rate");
+  const conflicts: IncentiveConflict[] = [];
+
+  // The central one. Every term in it is verifiable from the glossary remarks.
+  if (isBsc("Productivity Overall %", "Pick to Lost %", "On Time Dispatch %")) {
+    const active = cancel !== null && cancel > 2 && demandFill !== null && demandFill < 97;
+    conflicts.push({
+      id: "cancel-improves-bonus-metrics",
+      bscKey: "outbound_productivity_overall",
+      bscLabel: "Produktivitas outbound, rasio kehilangan, dan ketepatan kirim (BSC)",
+      exposedKey: "demand_fill_rate",
+      exposedLabel: "Permintaan terlayani (tanpa bonus)",
+      mechanism: "Membatalkan SO mengecilkan penyebut hampir semua metrik berbonus sekaligus: produktivitas naik karena order sulit hilang, rasio pick-to-lost dan koli hilang membaik karena lebih sedikit yang diambil, dan ketepatan kirim membaik karena lebih sedikit yang dikirim. Satu-satunya angka yang memburuk—porsi permintaan yang benar-benar dilayani—tidak masuk skema bonus.",
+      active,
+      evidence: active
+        ? [`Pembatalan ${pct(cancel)} terhadap target 2%.`, `Terpenuhi setelah batal ${pct(fulfillment)} sementara permintaan terlayani hanya ${pct(demandFill)}.`, `Permintaan tidak terlayani ${units(economics.unservedDemandQty)}.`]
+        : [],
+      guardrail: "Nilai metrik berbonus outbound hanya pada periode dengan pembatalan di bawah target, atau tambahkan permintaan terlayani ke dalam skema.",
+      owner: "WH Head + Personalia",
+    });
+  }
+
+  // Loss ratios are BSC; the volume they are divided by is not. A quiet day
+  // therefore looks like a well-run day on every one of them.
+  if (isBsc("Pick to Lost %", "Pick to Bad %", "Koli Hilang di Staging %", "Inbound to Bad %")) {
+    const activeLow = value("forecast_accuracy") !== null && (value("forecast_accuracy") as number) < 90;
+    conflicts.push({
+      id: "loss-ratio-denominator",
+      bscKey: "pick_to_lost",
+      bscLabel: "Rasio kehilangan: pick-to-lost, pick-to-bad, koli hilang, inbound-to-bad (BSC)",
+      exposedKey: "outbound_before_cancel",
+      exposedLabel: "Volume yang menjadi penyebutnya (tanpa bonus)",
+      mechanism: "Semua rasio kehilangan dibagi volume yang dikerjakan. Pada hari sepi rasionya membaik tanpa satu pun perbaikan proses, dan pada hari puncak memburuk tanpa satu pun kelalaian.",
+      active: activeLow,
+      evidence: activeLow ? [`Permintaan hanya ${pct(value("forecast_accuracy"))} dari rencana pada rentang ini.`, "Rasio kehilangan pada rentang sepi tidak sebanding dengan rentang puncak."] : [],
+      guardrail: "Baca rasio kehilangan bersama jumlah absolutnya, dan bandingkan hanya antar periode dengan volume yang setara.",
+      owner: "Ops Excellence",
+    });
+  }
+
+  // Productivity carries a bonus at four stations; the readiness those stations
+  // depend on carries none.
+  if (isBsc("Putaway Actual Productivity Collective", "Replenishment Actual Productivity Collective", "Productivity Collective Achievement %")) {
+    const pickface = value("pick_to_pf");
+    const dcc = value("dcc_accuracy");
+    const active = (pickface !== null && pickface < 85) || (dcc !== null && dcc < 98);
+    conflicts.push({
+      id: "productivity-over-readiness",
+      bscKey: "productivity_attainment",
+      bscLabel: "Produktivitas kolektif checker, putaway, replenish (BSC)",
+      exposedKey: "pick_to_pf",
+      exposedLabel: "Kesiapan pickface dan akurasi lokasi (tanpa bonus)",
+      mechanism: "Mengejar output per manday memberi imbalan pada kecepatan menutup task, bukan pada ketepatan menaruh barang. Lokasi yang di-override tanpa alasan hari ini menaikkan produktivitas putaway hari ini dan menurunkan akurasi lokasi minggu depan.",
+      active,
+      evidence: active ? [`Ambil dari pickface ${pct(pickface)}; akurasi stok ${pct(dcc)}.`, "Keduanya tidak masuk skema bonus, sementara produktivitas yang dilayaninya masuk."] : [],
+      guardrail: "Pasang akurasi lokasi sebagai syarat gugur untuk bonus produktivitas putaway, bukan sebagai metrik terpisah.",
+      owner: "SPV Inventory",
+    });
+  }
+
+  // Churn is BSC for the supervisor; the shortfall it creates is felt by the
+  // function, not by the person holding the bonus.
+  if (isBsc("Inbound Churn Rate %", "Outbound Churn Rate %", "Inventory Churn Rate %")) {
+    const churn = value("churn_all");
+    const attendance = value("attendance_all");
+    const active = churn !== null && churn > 5;
+    conflicts.push({
+      id: "churn-versus-coverage",
+      bscKey: "churn_all",
+      bscLabel: "Churn per divisi (BSC)",
+      exposedKey: "attendance_all",
+      exposedLabel: "Kecukupan orang harian (tanpa bonus)",
+      mechanism: "Menahan churn dapat dicapai dengan menahan orang yang sudah tidak cocok, dan kekurangan yang muncul di hari sibuk tidak terbaca pada metrik churn.",
+      active,
+      evidence: active ? [`Churn ${pct(churn)} terhadap ambang 5%.`, `Kehadiran ${pct(attendance)}.`] : [],
+      guardrail: "Baca churn bersama kehadiran dan kebutuhan manday, bukan sebagai angka tunggal.",
+      owner: "Personalia",
+    });
+  }
+
+  return conflicts.sort((a, b) => Number(b.active) - Number(a.active));
+}
+
+/**
  * Statistics the floor can act on.
  *
  * Each block answers one question that a single percentage cannot: whether the
@@ -2321,11 +2463,13 @@ export function buildAnalysis(
   const chains = causalChains(warehousePoints, current, kpis, zones, relationships, economics, pains);
   const semanticCatalog = metricSemanticCatalog(warehousePoints, current);
   const intelligence = intelligenceSummary(semanticCatalog);
+  const incentives = incentiveConflicts(kpis, semanticCatalog, economics);
   const picture = operatingPicture(kpis, zones, economics, chains);
   const threads = operationalThreads(warehousePoints, current, kpis);
   const chartWindow = visualWindow(current, effectivePeriod);
   const floor = floorStationLayer(warehousePoints, current, previous);
   const statistics = operationsStatistics(warehousePoints, current, chartWindow, noOpsDates);
+  const scenarioBaseline = simulationBaseline(warehousePoints, current);
   const contextGaps = decisionCoverageGaps(warehousePoints, current, kpis, semanticCatalog, threads, zones);
   const activeTrendKeys = division === "All" ? ["forecast_accuracy", "productivity_attainment", "demand_fill_rate", "capacity_utilization", "cancel_rate", "dcc_accuracy"]
     : MODULES.find((module) => module.division === division)?.keys.slice(0, 6) ?? ["forecast_accuracy", "productivity_attainment"];
@@ -2372,11 +2516,13 @@ export function buildAnalysis(
     floorStations: floor.stations,
     floorBriefing: floor.briefing,
     statistics,
+    simulationBaseline: scenarioBaseline,
+    incentiveConflicts: incentives,
     knowledgeBase: buildKnowledgeBase(),
     contextGaps,
     causalChains: chains,
     painPoints: pains,
-    initiatives: buildInitiatives(warehouse, pains, relationships, kpis, zones, economics, chains, statistics, floor.stations),
+    initiatives: buildInitiatives(warehouse, pains, relationships, kpis, zones, economics, chains, statistics, floor.stations, scenarioBaseline),
     filters: {
       warehouses: ["PGS", "SRG", "BIT", "STR"],
       divisions,
