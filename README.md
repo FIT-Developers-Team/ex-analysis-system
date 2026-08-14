@@ -12,14 +12,15 @@ NEXUS is a connected operations-intelligence dashboard for FIT quick-commerce wa
 - Resolves blank descriptions conservatively as `documented`, `inferred`, or `unresolved`; every inference exposes its basis, confidence, and the context still required, while unresolved metrics are blocked from decisions.
 - Produces a current operating picture such as demand suppression, surge undercoverage, capacity constraint, inventory drag, volume dilution, or process loss—together with observed facts, plausible mechanisms, alternative explanations, and a sequenced action path.
 - Maps five end-to-end operating threads and turns broken stages into a prioritized decision-coverage backlog instead of interpreting blank data as healthy performance.
-- Walks the physical flow as twelve floor stations — PO desk, GRN lane, QC gate, relabel bench, putaway aisle, zone capacity, cycle count, recovery queue, pickface refill, wave desk, packing bench, loading dock — each with its measured signals, its WMS transactions, the gemba checks a supervisor performs there, and failure modes that only fire when the data satisfies their trigger.
+- Walks the physical flow as fifteen floor stations across six stages — the day's plan and the roster, then the PO desk, GRN lane, QC gate, relabel bench, putaway aisle, zone capacity, cycle count, recovery queue, pickface refill, wave desk, packing bench, loading dock, and the wastage ledger — each with its measured signals, its WMS transactions, the gemba checks a supervisor performs there, and failure modes that only fire when the data satisfies their trigger.
+- Separates forecast bias from forecast noise, ordinary variation from special causes, and reliable percentages from small-sample ones, then sizes each action plan in units and mandays computed from the active window.
 - Selects adaptive initiative variants from the current warehouse state; title, trigger, why-now, intervention, and stop-loss change when the operating pattern changes.
 - Treats every initiative as a decision experiment with a portfolio role, explicit question, counterfactual, and leading indicators so the playbook can change when evidence changes.
 - Provides Daily, Weekly, Monthly, or custom date-range pivots with an equal-length previous comparison.
 - Benchmarks PGS, SRG, BIT, and STR on a common period and cut-off.
 - Includes a transparent scenario lab for volume, attendance, cancel, and process-efficiency changes, guarded by demand fill before cancellation.
 - Separates validated labor saving, false economy, under-coverage, and process loss using a non-monetary cost-to-serve proxy: mandays per 1,000 served units.
-- Exposes seven decision workspaces: Executive Cockpit, Floor Operations, Demand & Flow, Relationship Lab, Scenario Studio, Initiative Portfolio, and Metric Registry.
+- Exposes eight decision workspaces, grouped as Lihat (Ringkasan, Lantai, Alur volume, Bukti), Putuskan (Simulasi, Rencana aksi), and Rujukan (Pengetahuan, Data & definisi).
 - Adds an 8-week cross-functional risk heatmap, 28-day volume truth, fulfillment loss tree, labor-economics view, zonal capacity history, and priority-versus-effort portfolio.
 - Quantifies 84-day Pearson associations with sample size, lag, p-value, multiplicity correction, and hypothesis alignment; these signals are explicitly non-causal.
 - Excludes spreadsheet formula errors, treats future dates as plan rather than actual performance, and drops no-operations days instead of scoring them as zero.
@@ -114,6 +115,29 @@ Station scores never feed the warehouse health score. `healthFrom()` remains the
 Newly mapped source columns (PO adjustment, vendor OTIF, checker on-time/late, relabel and replenishment mandays, putaway capacity and utilisation, LDP/LBH value and share, troubleshoot contribution to SO FR, packer and loader productivity, SEUIC device adoption, pick-to-lost/bad, koli hilang di staging, hub-side fulfillment, depart and arrival punctuality, per-division attendance) feed this layer only. Promoting any of them into the health basket would change what every historical score meant, which is a decision for the metric owner.
 
 Two mapping gaps were closed rather than left as blanks: STR labels checker output `Checker Productivity Collective` where the others use the longer spelling, and BIT, SRG, and STR carry putaway forecast as bare `Forecast MPP` / `Forecast Weekly`. In both cases the spellings are mutually exclusive per warehouse, so they are one metric under two names. `Putaway Productivity` and `Putaway Actual Productivity Collective` are **not** merged — PGS and SRG report both with different values, so they are two definitions and the station shows them separately.
+
+## Operational statistics
+
+`lib/analysis/operations-math.ts` answers four questions a single percentage cannot. Every function is computable from columns the sheet already carries; there is no lead time, queue depth, or WIP in this data, so there is no Little's Law here either.
+
+| Question | Method | Why a percentage is not enough |
+| --- | --- | --- |
+| Is the plan wrong in one direction, or just noisy? | Bias (MPE) vs dispersion (MAPE − \|bias\|) | 80% accuracy that is always 20% under is a planning fix. 80% accuracy swinging ±40% around a correct average is a capacity fix. The two demand opposite actions. |
+| Was yesterday an event, or is this the process? | Individuals control chart, σ from the mean moving range ÷ 1.128, Nelson rules 1 and 2 | Chasing a bad day inside the limits changes nothing. A shift of eight points on one side never leaves the limits and would otherwise go unseen. |
+| Can this percentage settle an argument? | Wilson 95% interval | Vendor OTIF of 86% is 90 on-time out of 103 — roughly ±7 points. The gap to a 95% target is real; a 3-point week-on-week move is not. |
+| How many people did the workload need? | Volume ÷ the source's own productivity target | Not a new standard: it is the target column read backwards, so it can be stated without inventing anything. |
+
+The yield chain adds cumulative yield and each step's share of total loss, so the biggest leak is identified by size rather than by whichever step is discussed first.
+
+Sigma comes from the moving range rather than the standard deviation on purpose: a genuine process shift inflates sd, widening the limits enough to hide itself.
+
+## Knowledge base
+
+`lib/analysis/knowledge-base.ts` holds the operating doctrine as three kinds of article, kept apart because they carry different authority:
+
+- **Proses** — how the work is supposed to run, including steps the sheet does not measure. Dock scheduling, cold chain, FEFO, cycle count design, slotting, min–max, wave design, staging, hub handover, shift handover, roster, the OJT learning curve, device and master-data discipline, and the housekeeping that shows up in the numbers two weeks later.
+- **Rumus** — every number this product computes, written out with its basis. If a formula is not here, the product should not be showing the number.
+- **Aturan** — what may and may not be concluded from a reading.
 
 ## Measurement integrity rules
 

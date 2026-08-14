@@ -130,6 +130,14 @@ export const METRIC_ALIASES: Record<string, string[]> = {
   lost_to_found: ["lost fo found"],
   badstock_qty: ["badstock qty (actual)"],
   badstock_sla: ["sla bad stock"],
+  // The shared `total_wastage` key above matches both column names at once,
+  // which is fine for a reconciliation check and wrong for a displayed total.
+  // These two read the scopes separately.
+  total_wastage_wh: ["total wastage wh"],
+  total_wastage_all: ["total wastage (wh + ib to bad)"],
+  // Scope and cut-off are still unconfirmed, so this is read as context only and
+  // never used as a denominator.
+  gmv: ["gmv"],
   wastage_expired: ["wastage due to expired"],
   wastage_inbound_to_bad: ["wastage due to inbound to bad"],
   wastage_others: ["wastage due to others"],

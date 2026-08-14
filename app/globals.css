@@ -1347,6 +1347,81 @@ button { cursor: pointer; }
 .floor-unmeasured em { padding: 3px 8px; border: 1px dashed var(--line-strong); border-radius: 20px; color: var(--muted); font-size: var(--fs-micro); font-style: normal; }
 
 /* ==========================================================================
+   Statistics, knowledge base, manpower
+   ========================================================================== */
+
+.readout-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(288px, 1fr)); gap: var(--sp-3); }
+.readout { min-width: 0; padding: var(--sp-4); border: 1px solid var(--line); border-left: 3px solid var(--blue); border-radius: var(--r-lg); background: var(--paper); box-shadow: var(--shadow); }
+.readout h3 { margin: 0 0 8px; color: var(--muted); font-size: var(--fs-xs); font-weight: 700; line-height: var(--lh-snug); }
+.readout > p { margin: 0; color: var(--ink); font-size: var(--fs-sm); line-height: var(--lh-body); }
+.readout details { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line-soft); }
+.readout summary { display: inline-flex; align-items: center; gap: 5px; color: var(--blue-ink); font-size: var(--fs-micro); font-weight: 700; cursor: pointer; list-style: none; }
+.readout summary::-webkit-details-marker { display: none; }
+.readout details[open] summary svg { transform: rotate(180deg); }
+.readout summary svg { transition: transform .16s var(--ease); }
+.readout details p { margin: 8px 0 0; color: var(--muted); font-size: var(--fs-micro); line-height: var(--lh-snug); }
+.readout__caveat { display: flex; align-items: flex-start; gap: 5px; color: var(--gold-ink) !important; }
+.readout__caveat svg { flex: none; margin-top: 2px; }
+
+.control-chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: var(--sp-3); }
+.control-chart { border-left: 3px solid var(--blue); }
+.control-chart--special_cause { border-left-color: var(--orange); }
+.control-chart--shifted { border-left-color: var(--gold); }
+.control-chart > header { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); margin-bottom: var(--sp-2); }
+.control-chart > header strong { font-size: var(--fs-md); letter-spacing: -.01em; }
+.control-chart__finding { margin: 0 0 var(--sp-3); color: var(--muted); font-size: var(--fs-xs); line-height: var(--lh-snug); }
+
+.yield-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--sunken); overflow: hidden; }
+.yield-strip div { min-width: 0; padding: var(--sp-3) var(--sp-4); }
+.yield-strip div + div { border-left: 1px solid var(--line); }
+.yield-strip span, .yield-strip strong, .yield-strip small { display: block; }
+.yield-strip span { color: var(--muted); font-size: var(--fs-micro); }
+.yield-strip strong { margin: 4px 0 3px; font-size: var(--fs-xl); font-variant-numeric: tabular-nums; }
+.yield-strip small { color: var(--faint); font-size: var(--fs-micro); line-height: var(--lh-snug); }
+
+.manpower-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: var(--sp-3); }
+.manpower-card { padding: var(--sp-4); border: 1px solid var(--line); border-top: 3px solid var(--line-strong); border-radius: var(--r-lg); background: var(--paper); }
+.manpower-card--short { border-top-color: var(--orange); }
+.manpower-card--surplus { border-top-color: var(--gold); }
+.manpower-card--matched { border-top-color: var(--blue); }
+.manpower-card header { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.manpower-card header span { color: var(--ink); font-size: var(--fs-sm); font-weight: 700; }
+.manpower-card header b { padding: 3px 8px; border-radius: 20px; background: var(--sunken); color: var(--muted); font-size: var(--fs-micro); }
+.manpower-card--short header b { background: var(--orange-open); color: var(--orange-ink); }
+.manpower-card--surplus header b { background: var(--gold-open); color: var(--gold-ink); }
+.manpower-card__pair { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-2); margin: var(--sp-3) 0; }
+.manpower-card__pair small { display: block; color: var(--faint); font-size: var(--fs-micro); }
+.manpower-card__pair strong { display: block; margin-top: 2px; font-size: var(--fs-lg); font-variant-numeric: tabular-nums; }
+.manpower-card p { margin: 0; color: var(--muted); font-size: var(--fs-micro); line-height: var(--lh-snug); }
+
+.knowledge-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-3); margin: var(--sp-5) 0 var(--sp-2); }
+.knowledge-hint { margin: 0 0 var(--sp-4); color: var(--muted); font-size: var(--fs-sm); }
+.knowledge-domain { margin-bottom: var(--sp-5); }
+.knowledge-domain h2 { margin: 0 0 var(--sp-3); color: var(--blue); font-size: var(--fs-micro); font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+.knowledge-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: var(--sp-3); }
+.knowledge-card { min-width: 0; padding: var(--sp-4) var(--sp-5); border: 1px solid var(--line); border-left: 3px solid var(--blue); border-radius: var(--r-lg); background: var(--paper); box-shadow: var(--shadow); }
+.knowledge-card--rumus { border-left-color: var(--teal); }
+.knowledge-card--aturan { border-left-color: var(--gold); }
+.knowledge-card h3 { margin: 0 0 6px; font-size: var(--fs-lg); line-height: var(--lh-tight); letter-spacing: -.015em; }
+.knowledge-card__summary { margin: 0; color: var(--ink-2); font-size: var(--fs-sm); line-height: var(--lh-snug); }
+.knowledge-formula { display: block; margin: var(--sp-3) 0 0; padding: 9px 12px; border-radius: var(--r-md); background: var(--surface-ink); color: var(--on-dark); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--fs-xs); line-height: var(--lh-snug); overflow-x: auto; }
+.knowledge-card ul { margin: var(--sp-3) 0 0; padding-left: 19px; color: var(--muted); font-size: var(--fs-xs); line-height: var(--lh-body); }
+.knowledge-card li + li { margin-top: 6px; }
+.knowledge-card footer { display: flex; align-items: flex-start; gap: 6px; margin-top: var(--sp-3); padding-top: var(--sp-3); border-top: 1px solid var(--line-soft); color: var(--faint); font-size: var(--fs-micro); line-height: var(--lh-snug); }
+.knowledge-card footer svg { flex: none; margin-top: 1px; }
+
+.initiative-prize { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1px; background: var(--line-soft); }
+.initiative-prize > div { padding: var(--sp-3) var(--sp-5); background: var(--tint); }
+.initiative-prize span { display: block; color: var(--blue); font-size: var(--fs-micro); font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.initiative-prize strong { display: block; margin: 4px 0 3px; font-size: var(--fs-xl); font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.initiative-prize small { display: block; color: var(--muted); font-size: var(--fs-micro); line-height: var(--lh-snug); }
+
+.initiative-stations { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: var(--sp-3) var(--sp-5); border-top: 1px solid var(--line-soft); }
+.initiative-stations > span { color: var(--faint); font-size: var(--fs-micro); font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
+.initiative-stations button { display: inline-flex; align-items: center; gap: 3px; padding: 4px 9px; border: 1px solid var(--line); border-radius: 20px; background: var(--paper); color: var(--blue-ink); font-size: var(--fs-micro); font-weight: 650; }
+.initiative-stations button:hover { border-color: var(--blue); background: var(--blue-open); }
+
+/* ==========================================================================
    States
    ========================================================================== */
 
@@ -1417,6 +1492,11 @@ button { cursor: pointer; }
   .initiative-experiment { grid-template-columns: 1fr; }
   .initiative-experiment > div + div { border-left: 0; border-top: 1px solid var(--line-soft); }
   .context-gap-grid { grid-template-columns: 1fr; }
+  .control-chart-grid { grid-template-columns: 1fr; }
+  .knowledge-grid { grid-template-columns: 1fr; }
+  .yield-strip { grid-template-columns: 1fr 1fr; }
+  .yield-strip div:nth-child(3) { border-left: 0; }
+  .yield-strip div:nth-child(n+3) { border-top: 1px solid var(--line); }
 }
 
 /* Below 860px the sidebar becomes a bottom tab bar. */
@@ -1639,6 +1719,16 @@ button { cursor: pointer; }
 
   .loading-grid { grid-template-columns: 1fr; }
   .source-error { flex-direction: column; margin-top: var(--sp-5); padding: var(--sp-5); }
+
+  .readout-grid { grid-template-columns: 1fr; }
+  .yield-strip { grid-template-columns: 1fr; }
+  .yield-strip div + div { border-left: 0; border-top: 1px solid var(--line); }
+  .manpower-grid { grid-template-columns: 1fr; }
+  .knowledge-toolbar { align-items: stretch; flex-direction: column; }
+  .knowledge-toolbar .search-box { width: 100%; max-width: none; }
+  .knowledge-card { padding-inline: var(--sp-4); }
+  .initiative-prize > div { padding-inline: var(--sp-4); }
+  .initiative-stations { padding-inline: var(--sp-4); }
 }
 
 @media (max-width: 420px) {

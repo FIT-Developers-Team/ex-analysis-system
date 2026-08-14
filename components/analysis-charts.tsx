@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import type { CSSProperties } from "react";
+import type { ControlChart } from "@/lib/analysis/operations-math";
 import type {
   CapacityHistoryPoint,
   DriverSignal,
@@ -230,6 +231,47 @@ export function DriverChart({ drivers }: { drivers: DriverSignal[] }) {
     xAxis: { type: "value", min: 0, max: 100, axisLabel: { color: "#475569", fontSize: 11 }, splitLine: split },
     yAxis: { type: "category", data: sorted.map((item) => item.label), axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: "#475569", fontSize: 11, width: 136, overflow: "truncate" } },
     series: [{ type: "bar", barWidth: 14, data: sorted.map((item) => ({ value: item.score, itemStyle: { color: item.score < 65 ? palette[3] : item.score < 85 ? palette[2] : palette[0], borderColor: item.score < 65 ? "#a83f2c" : item.score < 85 ? "#a66100" : "#173fa5", borderWidth: 1, borderRadius: [0, 4, 4, 0] }, label: { show: true, position: "right", distance: 7, color: "#0f1f35", fontSize: 11, fontWeight: 700 } })), emphasis: { focus: "self" }, markLine: { silent: true, symbol: "none", lineStyle: { color: "#475569", type: "dashed" }, data: [{ xAxis: 65, label: { formatter: "prioritas 65", color: "#9d3a26", fontSize: 10 } }, { xAxis: 85, label: { formatter: "sehat 85", color: "#475569", fontSize: 10 } }] } }],
+  }} />;
+}
+
+/**
+ * Individuals control chart. The centre line and the two limits are what turn a
+ * jagged daily series into a statement: inside the band is the process, outside
+ * it is an event. Out-of-control points are drawn larger and in the breach
+ * colour so they can be found without reading the tooltip.
+ */
+export function ControlChartView({ chart }: { chart: ControlChart }) {
+  const dates = chart.points.map((point) => point.date);
+  const values = chart.points.map((point) => point.value === null ? null : Number(point.value.toFixed(2)));
+  const flagged = chart.points.map((point) => point.outOfControl && point.value !== null ? Number(point.value.toFixed(2)) : null);
+  return <Chart height={300} option={{
+    animationDuration: 350,
+    tooltip: { ...tooltip, trigger: "axis", valueFormatter: (value: number | null) => chart.unit === "percent" ? percent(value, 2) : number(value, 1) },
+    grid: { left: 58, right: 72, top: 24, bottom: 34 },
+    xAxis: { type: "category", data: dates, boundaryGap: false, ...axis, axisLabel: { color: "#475569", fontSize: 11, formatter: (value: string) => value.slice(5), interval: dateInterval(dates.length), hideOverlap: true } },
+    yAxis: { type: "value", scale: true, axisLabel: { color: "#475569", fontSize: 11, formatter: chart.unit === "percent" ? "{value}%" : "{value}" }, splitLine: split },
+    series: [
+      {
+        name: chart.label,
+        type: "line",
+        data: values,
+        connectNulls: false,
+        showSymbol: pointVisibility(dates.length),
+        symbolSize: 5,
+        lineStyle: { width: 2.4, color: palette[0] },
+        itemStyle: { color: palette[0] },
+        markLine: chart.mean === null ? undefined : {
+          symbol: "none",
+          silent: true,
+          data: [
+            { yAxis: Number(chart.mean.toFixed(2)), lineStyle: { color: "#475569", type: "solid", width: 1.2 }, label: { formatter: "rata-rata", color: "#475569", fontSize: 10 } },
+            { yAxis: Number((chart.upperLimit ?? 0).toFixed(2)), lineStyle: { color: palette[3], type: "dashed" }, label: { formatter: "batas atas", color: "#9d3a26", fontSize: 10 } },
+            { yAxis: Number((chart.lowerLimit ?? 0).toFixed(2)), lineStyle: { color: palette[3], type: "dashed" }, label: { formatter: "batas bawah", color: "#9d3a26", fontSize: 10 } },
+          ],
+        },
+      },
+      { name: "Di luar batas", type: "scatter", data: flagged, symbolSize: 11, itemStyle: { color: palette[3], borderColor: "#fff", borderWidth: 2 }, z: 5 },
+    ],
   }} />;
 }
 

@@ -101,6 +101,17 @@ change requires breaking one, say so explicitly rather than quietly relaxing it.
   an explicit `scale`; the engine's "multiply anything below 2" heuristic is safe
   for derived percentages but turns 2.46 collective attainment into 2.5% and a
   count of 2 late deliveries into 200.
+- **Statistics state their method next to their answer.** Everything in
+  `operations-math.ts` is computable from columns the sheet has. Do not add a
+  function that needs lead time, queue depth, or WIP — the source carries none
+  of them, and an estimated input would make the output look measured.
+- **Control-chart sigma comes from the moving range**, not the standard
+  deviation. A real process shift inflates sd and widens the limits enough to
+  hide itself.
+- **A quantified action plan is arithmetic, not a promise.** `quantified` on an
+  initiative restates the active window ("if cancel had been at target, this
+  many units would have stayed"). It never projects what the initiative will
+  deliver, and the note on each entry says so.
 
 ## Data reality to keep in mind
 

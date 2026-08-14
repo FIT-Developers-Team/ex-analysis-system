@@ -4,6 +4,7 @@ import type {
   FloorBriefing,
   FloorFailureMode,
   FloorSignal,
+  FloorStage,
   FloorStation,
   FloorStationState,
   MetricReading,
@@ -81,7 +82,19 @@ const md = (label: string, floorNote: string): FloorMetricRule =>
  * change how existing threads and trends read the same keys.
  */
 export const FLOOR_METRIC_RULES: Record<string, FloorMetricRule> = {
-  // --- Station 1 · PO desk and vendor arrival -------------------------------
+  // --- Pre-shift: the day's plan and the people who will run it -------------
+  forecast_weekly_outbound: qty("Rencana outbound", "Volume yang dijanjikan rencana mingguan untuk rentang ini."),
+  forecast_mpp_outbound: qty("Rencana MPP outbound", "Volume yang dipakai menyusun jumlah orang. Beda dengan rencana mingguan berarti dua angka dipakai untuk dua keputusan."),
+  forecast_weekly_inbound: qty("Rencana inbound", "Volume masuk yang direncanakan."),
+  outbound_capacity: qty("Kapasitas SO harian", "Batas yang dipakai menghitung utilisasi outbound.", "latest"),
+  inbound_capacity: qty("Kapasitas inbound harian", "Batas yang dipakai menghitung utilisasi inbound.", "latest"),
+  scheduled_mandays: md("Manday terjadwal", "Yang masuk jadwal sebelum ketidakhadiran diperhitungkan."),
+  budget_mandays: md("Manday budget", "Rencana keseluruhan gudang."),
+  available_slot_mp: qty("Slot MP tersedia", "Kursi yang benar-benar terisi orang.", "latest"),
+  budget_slot_mp: qty("Slot MP budget", "Kursi yang dianggarkan. Selisih dengan tersedia adalah lubang struktural, bukan ketidakhadiran harian.", "latest"),
+  schedule_accuracy: pct("Akurasi jadwal", null, true, 5, "none", "Definisi sumber belum dikonfirmasi dan nilainya bisa melewati 100%. Ditampilkan untuk diperiksa, tidak dinilai.", "fraction"),
+
+  // --- Station: PO desk and vendor arrival ----------------------------------
   po_adjustment: qty("PO adjustment", "Berapa kali qty PO diubah agar cocok dengan fisik. Satu pun perlu nama vendor dan alasannya.", "sum", 0, false, 22),
   checker_otif: pct("Vendor OTIF", 95, true, 4, "working_threshold", "Kiriman tepat waktu dan tepat jumlah. Rendah di sini berarti kurva kedatangan tidak bisa dipakai untuk mengatur jumlah checker."),
   checker_on_time: qty("Kiriman tepat waktu", "Jumlah kiriman yang masuk sesuai slot dock.", "sum"),
@@ -182,6 +195,16 @@ export const FLOOR_METRIC_RULES: Record<string, FloorMetricRule> = {
   actual_truck_delivered: qty("Truk terkirim", "Armada yang benar-benar jalan.", "sum"),
   truck_on_call: qty("Truk on call", "Armada cadangan yang dipanggil. Naik terus berarti rencana armadanya yang kurang.", "sum"),
 
+  // --- Quality and business value -------------------------------------------
+  // Two scopes, deliberately read through separate keys. The shared
+  // `total_wastage` alias covers both column names at once, so summing through
+  // it would count the warehouse figure twice.
+  total_wastage_wh: { label: "Wastage gudang", unit: "currency", target: null, higher: false, slope: 5, aggregation: "sum", scale: "raw", basis: "none", floorNote: "Loss yang menjadi tanggung jawab proses gudang saja." },
+  total_wastage_all: { label: "Wastage total", unit: "currency", target: null, higher: false, slope: 5, aggregation: "sum", scale: "raw", basis: "none", floorNote: "Gudang ditambah barang yang sudah rusak sejak datang. Selisih keduanya adalah porsi vendor." },
+  wastage_inbound_to_bad: { label: "Wastage inbound-to-bad", unit: "currency", target: null, higher: false, slope: 5, aggregation: "sum", scale: "raw", basis: "none", floorNote: "Loss yang sudah ada sejak barang datang. Ini masuk klaim vendor, bukan perbaikan internal." },
+  wastage_others: { label: "Wastage lain-lain", unit: "currency", target: null, higher: false, slope: 5, aggregation: "sum", scale: "raw", basis: "none", floorNote: "Kalau kategori ini yang terbesar, reason code-nya yang perlu diperbaiki lebih dulu." },
+  gmv: { label: "GMV", unit: "currency", target: null, higher: true, slope: 5, aggregation: "sum", scale: "raw", basis: "none", floorNote: "Cakupan produk dan cut-off belum dikonfirmasi. Dipakai sebagai konteks skala, bukan penyebut resmi." },
+
   // --- Cross-station people signals -----------------------------------------
   attendance_inbound: pct("Kehadiran inbound", 96, true, 5, "guardrail", "Kehadiran fungsi ini, bukan rata-rata gudang."),
   attendance_inventory: pct("Kehadiran inventory", 96, true, 5, "guardrail", "Kehadiran fungsi ini, bukan rata-rata gudang."),
@@ -211,6 +234,10 @@ export const FLOOR_ENGINE_KEYS = [
   "on_time_dispatch",
   "on_time_arrival",
   "truck_delivered_rate",
+  "inbound_capacity_utilization",
+  "attendance_all",
+  "churn_all",
+  "mp_fulfill_accuracy",
 ] as const;
 
 /* ------------------------------------------------------------------------- */
@@ -241,7 +268,7 @@ interface Formatter {
 
 interface StationConfig {
   id: string;
-  stage: FloorStation["stage"];
+  stage: FloorStage;
   title: string;
   shiftMoment: string;
   owner: string;
@@ -258,6 +285,134 @@ const above = (value: number | null, limit: number) => value !== null && value >
 const below = (value: number | null, limit: number) => value !== null && value < limit;
 
 export const FLOOR_STATIONS: StationConfig[] = [
+  {
+    id: "day-plan",
+    stage: "Perencanaan",
+    title: "Rencana hari ini & batas kapasitas",
+    shiftMoment: "H-1 sore, dikunci sebelum shift pertama",
+    owner: "Planning + WH Head",
+    purpose: "Menetapkan berapa yang akan dikerjakan hari ini dan memastikan angkanya masih muat di dalam batas fisik gudang sebelum satu orang pun dijadwalkan.",
+    wmsSteps: [
+      "Bandingkan rencana mingguan dengan rencana MPP. Kalau berbeda, tentukan mana yang dipakai untuk orang dan mana untuk kapasitas — jangan dipakai bergantian.",
+      "Cek volume rencana terhadap kapasitas SO harian dan kapasitas inbound. Rencana yang melewati kapasitas bukan rencana, itu daftar keinginan.",
+      "Kunci cut-off SO per rute, bukan satu cut-off untuk seluruh hari.",
+      "Sebarkan rencana ke tiap fungsi dalam satuan yang mereka pakai: pcs untuk picking, palet untuk putaway, koli untuk loading.",
+    ],
+    gembaChecks: [
+      "Lihat hari dalam seminggu. Senin dan Jumat hampir selalu berbeda; rencana yang sama untuk keduanya akan salah dua kali.",
+      "Periksa apakah ada promo, hari besar, atau SKU baru yang masuk. Ketiganya mengubah bentuk permintaan, bukan hanya jumlahnya.",
+      "Tanyakan ke leader apakah rencana kemarin terasa masuk akal di lantai. Angka yang selalu meleset ke arah yang sama sudah diketahui tim jauh sebelum muncul di laporan.",
+    ],
+    handoffRisk: "Rencana yang melewati kapasitas akan diselesaikan lewat pembatalan di sore hari, dan pembatalan itu akan terlihat sebagai keputusan outbound, bukan sebagai kesalahan perencanaan.",
+    signals: ["forecast_accuracy", "inbound_forecast_accuracy", "outbound_capacity_utilization", "inbound_capacity_utilization", "forecast_weekly_outbound", "forecast_mpp_outbound", "outbound_capacity", "so_ratio"],
+    unmeasured: ["Sebaran permintaan per jam", "Cut-off per rute", "Kalender promo dan SKU baru"],
+    failureModes: [
+      {
+        id: "two-plans",
+        title: "Dua angka rencana dipakai bergantian",
+        floorSymptom: "Jumlah orang disiapkan dari satu angka, target volume diumumkan dari angka lain, dan keduanya tidak pernah dibandingkan.",
+        dataSignature: "Rencana MPP berbeda material dari rencana mingguan pada rentang yang sama.",
+        rootCauses: ["MPP dan rencana mingguan punya horizon berbeda", "Revisi rencana tidak sampai ke penyusun jadwal", "Tidak ada satu angka yang disepakati sebagai acuan"],
+        containment: "Pilih satu angka untuk hari ini dan umumkan mana yang dipakai; jangan menyelaraskan keduanya di tengah shift.",
+        correction: "Tetapkan satu angka acuan beserta jam kuncinya, dan turunkan angka lain darinya.",
+        owner: "Planning",
+        trigger: "Selisih rencana MPP dan rencana mingguan lebih dari 10%.",
+        evaluate: (value, fmt) => {
+          const mpp = value.forecast_mpp_outbound;
+          const weekly = value.forecast_weekly_outbound;
+          if (mpp === null || weekly === null || weekly <= 0) return null;
+          const gap = Math.abs(mpp - weekly) / weekly;
+          if (gap <= 0.1) return null;
+          return [`Rencana MPP ${fmt.num("forecast_mpp_outbound")}`, `Rencana mingguan ${fmt.num("forecast_weekly_outbound")}`, `Selisih ${(gap * 100).toLocaleString("id-ID", { maximumFractionDigits: 1 })}%`];
+        },
+      },
+      {
+        id: "plan-over-capacity",
+        title: "Rencana melewati batas kapasitas",
+        floorSymptom: "Semua orang sibuk sejak jam pertama dan tidak ada satu pun jam yang longgar untuk mengejar ketinggalan.",
+        dataSignature: "Utilisasi outbound atau inbound di atas 85%.",
+        rootCauses: ["Kapasitas master tidak pernah divalidasi ulang", "Rencana disusun dari permintaan, bukan dari kemampuan", "Tidak ada mekanisme menolak volume"],
+        containment: "Tentukan rute atau SKU mana yang digeser ke hari berikutnya sekarang, sebelum jam sibuk—bukan lewat pembatalan sore hari.",
+        correction: "Sepakati aturan penerimaan volume: di atas berapa persen kapasitas, sebagian volume dijadwal ulang di muka.",
+        owner: "Planning + WH Head",
+        trigger: "Utilisasi outbound atau inbound >85%.",
+        evaluate: (value, fmt) => {
+          if (!above(value.outbound_capacity_utilization, 85) && !above(value.inbound_capacity_utilization, 85)) return null;
+          return [`Utilisasi outbound ${fmt.pct("outbound_capacity_utilization")}`, `Utilisasi inbound ${fmt.pct("inbound_capacity_utilization")}`, `Kapasitas SO ${fmt.num("outbound_capacity")}`];
+        },
+      },
+    ],
+  },
+  {
+    id: "roster",
+    stage: "Perencanaan",
+    title: "Roster, kehadiran & tenaga cadangan",
+    shiftMoment: "H-1 malam sampai apel pagi",
+    owner: "Personalia + SPV fungsi",
+    purpose: "Memastikan orang yang hadir cukup untuk beban yang sudah dikunci, dan lubangnya diketahui sebelum shift mulai—bukan ditemukan jam sebelas siang.",
+    wmsSteps: [
+      "Bandingkan manday terjadwal dengan manday budget. Selisihnya adalah keputusan, dan keputusan itu harus punya nama.",
+      "Bandingkan slot MP tersedia dengan slot budget. Kekurangan di sini bersifat struktural dan tidak bisa ditutup dengan lembur.",
+      "Catat ketidakhadiran sebelum apel selesai, bukan setelah pekerjaan berjalan.",
+      "Tandai siapa yang boleh dipindah antar fungsi hari ini, beserta jamnya.",
+    ],
+    gembaChecks: [
+      "Hitung kepala di apel dan bandingkan dengan daftar. Selisih di sini adalah selisih yang paling mahal karena semua rencana lain dibangun di atasnya.",
+      "Lihat komposisi tim per zona: berapa regular, berapa OJT, berapa harian lepas. Tim yang sama jumlahnya bisa berbeda jauh kemampuannya.",
+      "Pastikan orang baru tidak ditempatkan di zona tersulit hari ini. Itu menghasilkan dua kerugian sekaligus: lambat dan salah.",
+      "Cek siapa yang sudah lembur dua hari berturut-turut. Hari ketiga produktivitasnya akan turun dan kesalahannya naik.",
+    ],
+    handoffRisk: "Kekurangan orang yang tidak diketahui pagi hari akan muncul sore hari sebagai SLA gagal atau permintaan dibatalkan, dan pada titik itu pilihannya tinggal yang buruk.",
+    signals: ["attendance_all", "churn_all", "mp_fulfill_accuracy", "scheduled_mandays", "budget_mandays", "available_slot_mp", "budget_slot_mp", "mandays_daily_worker", "schedule_accuracy"],
+    unmeasured: ["Kehadiran per jam", "Komposisi regular vs OJT per shift", "Jam lembur per orang", "Alasan ketidakhadiran"],
+    failureModes: [
+      {
+        id: "structural-shortfall",
+        title: "Kursi kosong, bukan orang tidak hadir",
+        floorSymptom: "Tim terasa kurang setiap hari, bukan hanya pada hari tertentu.",
+        dataSignature: "Slot MP tersedia di bawah slot budget secara konsisten.",
+        rootCauses: ["Rekrutmen tertinggal dari churn", "Slot dibekukan tanpa penyesuaian beban", "Turnover terkonsentrasi di satu fungsi"],
+        containment: "Jangan menutup lubang struktural dengan lembur harian—itu memindahkan biaya tanpa menyelesaikan apa pun.",
+        correction: "Bawa selisih slot ke rekrutmen dengan angka, dan sesuaikan target sementara sampai kursinya terisi.",
+        owner: "Personalia",
+        trigger: "Slot MP tersedia < slot MP budget.",
+        evaluate: (value, fmt) => {
+          const available = value.available_slot_mp;
+          const budget = value.budget_slot_mp;
+          if (available === null || budget === null || available >= budget) return null;
+          return [`Slot tersedia ${fmt.num("available_slot_mp")} vs budget ${fmt.num("budget_slot_mp")}`, `Kehadiran ${fmt.pct("attendance_all")}`, `Churn ${fmt.pct("churn_all")}`];
+        },
+      },
+      {
+        id: "daily-worker-dependence",
+        title: "Hari ini bergantung pada tenaga harian",
+        floorSymptom: "Sebagian besar wajah di zona tertentu belum pernah Anda lihat minggu lalu.",
+        dataSignature: "Manday tenaga harian terbaca nyata pada rentang aktif.",
+        rootCauses: ["Kursi tetap kosong", "Lonjakan volume ditutup tenaga lepas", "Kehadiran regular rendah"],
+        containment: "Tempatkan tenaga harian berpasangan dengan regular, dan jangan di zona bernilai tinggi.",
+        correction: "Ukur selisih output regular dan harian; kalau besar, biaya sebenarnya bukan di upah tapi di rework.",
+        owner: "Personalia + SPV fungsi",
+        trigger: "Manday tenaga harian > 0 pada rentang aktif.",
+        evaluate: (value, fmt) => above(value.mandays_daily_worker, 0)
+          ? [`Manday harian lepas ${fmt.num("mandays_daily_worker", 1)}`, `Manday terjadwal ${fmt.num("scheduled_mandays", 1)}`, `Kehadiran ${fmt.pct("attendance_all")}`]
+          : null,
+      },
+      {
+        id: "attendance-gap",
+        title: "Kehadiran di bawah ambang",
+        floorSymptom: "Setiap fungsi memulai hari dengan menghitung ulang siapa yang mengerjakan apa.",
+        dataSignature: "Kehadiran keseluruhan di bawah 96%.",
+        rootCauses: ["Ketidakhadiran mendadak tidak punya cadangan", "Jadwal disusun tanpa penyangga", "Churn tinggi di satu fungsi"],
+        containment: "Tutup fungsi dengan risiko SLA tertinggi lebih dulu; jangan membagi kekurangan rata ke semua fungsi.",
+        correction: "Tetapkan cadangan minimum per fungsi berdasarkan pola ketidakhadiran empat minggu terakhir.",
+        owner: "Personalia",
+        trigger: "Kehadiran <96%.",
+        evaluate: (value, fmt) => below(value.attendance_all, 96)
+          ? [`Kehadiran ${fmt.pct("attendance_all")}`, `Ketepatan pemenuhan MP ${fmt.pct("mp_fulfill_accuracy")}`, `Churn ${fmt.pct("churn_all")}`]
+          : null,
+      },
+    ],
+  },
   {
     id: "po-arrival",
     stage: "Inbound",
@@ -909,6 +1064,63 @@ export const FLOOR_STATIONS: StationConfig[] = [
         owner: "Fleet",
         trigger: "Truck delivered <98%.",
         evaluate: (value, fmt) => below(value.truck_delivered_rate, 98) ? [`Truck delivered ${fmt.pct("truck_delivered_rate")}`, `Dedicated ${fmt.num("truck_dedicated")} vs terkirim ${fmt.num("actual_truck_delivered")}`, `On call ${fmt.num("truck_on_call")}`] : null,
+      },
+    ],
+  },
+  {
+    id: "quality-value",
+    stage: "Mutu",
+    title: "Wastage & nilai yang hilang",
+    shiftMoment: "Ditutup harian, ditinjau mingguan",
+    owner: "QA + Inventory Control",
+    purpose: "Mengubah kerusakan dari jumlah kasus menjadi nilai, karena prioritas perbaikan mengikuti nilai dan bukan mengikuti tahap mana yang paling sering dibahas.",
+    wmsSteps: [
+      "Setiap loss diberi reason code pada hari kejadian. Reason code yang diisi seminggu kemudian adalah tebakan.",
+      "Pisahkan empat penyebab: handling, kedaluwarsa, rusak sejak datang, dan lain-lain. Keempatnya punya pemilik yang berbeda.",
+      "Loss yang berasal dari vendor masuk jalur klaim, bukan jalur perbaikan internal. Menggabungkan keduanya membuat keduanya tidak selesai.",
+      "Tutup angka harian sebelum shift berganti; akumulasi mingguan tidak bisa ditelusuri ke kejadian.",
+    ],
+    gembaChecks: [
+      "Berdirilah di area bad stock dan lihat isinya. Kalau kategori terbesarnya sama setiap minggu, tidak ada yang sedang diperbaiki.",
+      "Ambil lima barang kedaluwarsa dan telusuri lokasinya. Hampir selalu lokasi yang sulit dijangkau atau lokasi dengan dua batch.",
+      "Bandingkan barang rusak karena handling dengan cara penumpukan di lorong. Sebagian besar penyebabnya terlihat hanya dengan berdiri di sana.",
+      "Kalau kategori 'lain-lain' paling besar, yang rusak adalah reason code-nya, bukan barangnya.",
+    ],
+    handoffRisk: "Loss tanpa penyebab yang jelas akan dibebankan ke gudang secara keseluruhan, dan perbaikan yang benar—di vendor, di putaway, atau di penumpukan—tidak akan pernah dimulai.",
+    signals: ["total_wastage_wh", "total_wastage_all", "wastage_handling", "wastage_expired", "wastage_inbound_to_bad", "wastage_others", "gmv"],
+    unmeasured: ["Wastage per SKU dan per lokasi", "Nilai klaim yang berhasil ditagih", "Umur barang saat dinyatakan rusak", "Cakupan dan cut-off GMV belum terkonfirmasi sehingga rasio ke GMV belum bisa dipakai"],
+    failureModes: [
+      {
+        id: "unclassified-loss",
+        title: "Penyebab terbesar adalah 'lain-lain'",
+        floorSymptom: "Rapat mingguan membahas total kerusakan tanpa ada yang bisa menyebut penyebabnya.",
+        dataSignature: "Wastage lain-lain melebihi salah satu kategori bernama.",
+        rootCauses: ["Reason code diisi belakangan", "Pilihan reason code tidak mencerminkan kejadian nyata", "Tidak ada yang memeriksa isian"],
+        containment: "Hari ini, setiap loss di atas nilai tertentu harus punya foto dan penyebab sebelum ditutup.",
+        correction: "Rapikan daftar reason code berdasarkan kejadian yang benar-benar terjadi, lalu audit isiannya mingguan.",
+        owner: "QA",
+        trigger: "Wastage lain-lain lebih besar dari wastage handling atau kedaluwarsa.",
+        evaluate: (value, fmt) => {
+          const others = value.wastage_others;
+          if (others === null) return null;
+          const named = [value.wastage_handling, value.wastage_expired].filter((item): item is number => item !== null);
+          if (!named.length || others <= Math.max(...named)) return null;
+          return [`Lain-lain ${fmt.num("wastage_others")}`, `Handling ${fmt.num("wastage_handling")}`, `Kedaluwarsa ${fmt.num("wastage_expired")}`];
+        },
+      },
+      {
+        id: "vendor-loss-absorbed",
+        title: "Kerusakan dari vendor diserap gudang",
+        floorSymptom: "Barang yang datang sudah rusak tetap masuk hitungan kerusakan gudang.",
+        dataSignature: "Wastage inbound-to-bad terbaca nyata terhadap total.",
+        rootCauses: ["Bukti kondisi saat bongkar tidak diambil", "Jalur klaim lebih repot daripada menyerap", "Loss tidak dipisahkan sejak awal"],
+        containment: "Pisahkan angkanya sekarang, sebelum masuk laporan gabungan.",
+        correction: "Jalankan klaim dengan bukti foto saat bongkar; tanpa bukti, klaim tidak akan pernah berjalan.",
+        owner: "QA + Buyer",
+        trigger: "Wastage inbound-to-bad > 0.",
+        evaluate: (value, fmt) => above(value.wastage_inbound_to_bad, 0)
+          ? [`Inbound-to-bad ${fmt.num("wastage_inbound_to_bad")}`, `Wastage gudang ${fmt.num("total_wastage_wh")}`, `Wastage total ${fmt.num("total_wastage_all")}`]
+          : null,
       },
     ],
   },

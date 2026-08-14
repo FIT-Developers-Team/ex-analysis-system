@@ -1,6 +1,8 @@
 import { metricAliasKeys, normalizeLabel } from "@/lib/data/metric-aliases";
 import { buildMetricSemantic, OPERATION_GLOSSARY, OPERATING_RULES } from "@/lib/analysis/operations-ontology";
 import { buildFloorBriefing, buildFloorStations, FLOOR_ENGINE_KEYS } from "@/lib/analysis/floor-operations";
+import { buildKnowledgeBase } from "@/lib/analysis/knowledge-base";
+import { controlChart, forecastQuality, requiredMandays, variability, wilsonInterval, yieldChain } from "@/lib/analysis/operations-math";
 import { clamp, decayScore } from "@/lib/analysis/scoring";
 import { PRIORITY_WAREHOUSES } from "@/lib/types";
 import type {
@@ -12,11 +14,13 @@ import type {
   DecisionCoverageGap,
   DecisionInsight,
   DriverSignal,
+  FloorStation,
   FunctionalModule,
   Initiative,
   IntelligenceSummary,
   MetricPoint,
   MetricReading,
+  OperationsStatistics,
   OperationsEconomics,
   OperatingPicture,
   OperationalThread,
@@ -253,37 +257,37 @@ function normalizeSourcePercent(value: number | null): number | null {
 }
 
 const rules: Record<string, { label: string; unit: MetricReading["unit"]; target: number | null; higher: boolean; interpretation: string }> = {
-  inbound_forecast_accuracy: { label: "Inbound forecast accuracy", unit: "percent", target: 100, higher: true, interpretation: "Actual inbound vs weekly forecast; zona sehat 90–110%." },
-  inbound_productivity_attainment: { label: "Checker productivity", unit: "percent", target: 100, higher: true, interpretation: "Actual checker output per manday terhadap productivity target." },
-  forecast_accuracy: { label: "Forecast accuracy", unit: "percent", target: 100, higher: true, interpretation: "Actual outbound vs weekly forecast; zona sehat 90–110%." },
-  productivity_attainment: { label: "Picker productivity", unit: "percent", target: 100, higher: true, interpretation: "Produktivitas aktual terhadap target; dihitung dari actual goods." },
-  putaway_productivity_attainment: { label: "Putaway productivity", unit: "percent", target: 100, higher: true, interpretation: "Actual putaway productivity terhadap target kolektif." },
-  relabel_productivity_attainment: { label: "Relabel productivity", unit: "percent", target: 100, higher: true, interpretation: "Actual relabel productivity terhadap target; bukan forecast attainment karena forecast pcs relabel tidak tersedia." },
-  inbound_capacity_utilization: { label: "Inbound utilization", unit: "percent", target: 85, higher: false, interpretation: "Actual inbound terhadap max inbound capacity." },
-  inventory_capacity_utilization: { label: "Inventory utilization", unit: "percent", target: 85, higher: false, interpretation: "Peak inventory actual terhadap max inventory capacity." },
-  outbound_capacity_utilization: { label: "Outbound utilization", unit: "percent", target: 85, higher: false, interpretation: "Request setelah cancel terhadap max outbound capacity." },
-  fulfillment_rate: { label: "Warehouse FR", unit: "percent", target: 99, higher: true, interpretation: "Total RTS ÷ total request setelah cancel pada rentang aktif. Baca bersama Demand fill rate." },
+  inbound_forecast_accuracy: { label: "Akurasi rencana inbound", unit: "percent", target: 100, higher: true, interpretation: "Barang masuk dibanding rencana mingguan. Sehat di 90–110%." },
+  inbound_productivity_attainment: { label: "Produktivitas checker", unit: "percent", target: 100, higher: true, interpretation: "Hasil checker per manday dibanding targetnya." },
+  forecast_accuracy: { label: "Akurasi rencana", unit: "percent", target: 100, higher: true, interpretation: "Permintaan masuk dibanding rencana mingguan. Sehat di 90–110%." },
+  productivity_attainment: { label: "Produktivitas picker", unit: "percent", target: 100, higher: true, interpretation: "Hasil picker dibanding targetnya. Dihitung dari barang nyata, bukan rencana." },
+  putaway_productivity_attainment: { label: "Produktivitas putaway", unit: "percent", target: 100, higher: true, interpretation: "Hasil putaway dibanding target kolektifnya." },
+  relabel_productivity_attainment: { label: "Produktivitas relabel", unit: "percent", target: 100, higher: true, interpretation: "Hasil relabel dibanding targetnya. Bukan pencapaian rencana, karena rencana pcs relabel tidak tersedia." },
+  inbound_capacity_utilization: { label: "Pemakaian kapasitas inbound", unit: "percent", target: 85, higher: false, interpretation: "Barang masuk dibanding batas kapasitas inbound." },
+  inventory_capacity_utilization: { label: "Pemakaian kapasitas gudang", unit: "percent", target: 85, higher: false, interpretation: "Isi gudang saat puncak dibanding batas kapasitasnya." },
+  outbound_capacity_utilization: { label: "Pemakaian kapasitas outbound", unit: "percent", target: 85, higher: false, interpretation: "Permintaan setelah pembatalan dibanding batas kapasitas outbound." },
+  fulfillment_rate: { label: "Terpenuhi setelah batal", unit: "percent", target: 99, higher: true, interpretation: "Siap kirim dibagi permintaan setelah pembatalan. Selalu baca bersama Permintaan terlayani." },
   // Target 97 is derived from the guardrails the business already set, not invented:
   // FR target 99% x (100% - cancel target 2%) = 97.02%.
-  demand_fill_rate: { label: "Demand fill rate", unit: "percent", target: 97, higher: true, interpretation: "RTS terhadap request sebelum cancel; inilah porsi permintaan yang benar-benar dilayani." },
-  sla_checker_inbound: { label: "Inbound checker SLA", unit: "percent", target: 98, higher: true, interpretation: "Guardrail lead time saat mengatur manpower." },
-  mandays_variance: { label: "Mandays vs budget", unit: "percent", target: 0, higher: false, interpretation: "Negatif berarti hemat; valid hanya jika SLA dan productivity tetap sehat." },
-  capacity_utilization: { label: "Utilisasi puncak alur", unit: "percent", target: 85, higher: false, interpretation: "Utilisasi tertinggi di antara inbound, inventory, dan outbound. Ini bukan okupansi gudang—untuk itu baca panel zona." },
-  cancel_rate: { label: "Request cancelled", unit: "percent", target: 2, higher: false, interpretation: "Before cancel vs after cancel; harus dibaca bersama FR dan productivity." },
-  troubleshoot_fr: { label: "Troubleshoot FR", unit: "percent", target: 90, higher: true, interpretation: "Task executed terhadap task created." },
-  dcc_accuracy: { label: "DCC accuracy", unit: "percent", target: 98, higher: true, interpretation: "Rata-rata accuracy Qty, SLOC, dan SLOC × Qty." },
-  pick_to_pf: { label: "Pick to PF", unit: "percent", target: 85, higher: true, interpretation: "Share picking dari pickface; berkaitan dengan replenishment dan productivity." },
-  attendance_all: { label: "Attendance", unit: "percent", target: 96, higher: true, interpretation: "Actual attendance terhadap schedule keseluruhan." },
-  churn_all: { label: "Churn rate", unit: "percent", target: 5, higher: false, interpretation: "Share manpower resign; lebih rendah lebih baik." },
-  schedule_accuracy: { label: "Schedule accuracy", unit: "percent", target: 95, higher: true, interpretation: "Kesesuaian scheduled mandays terhadap manpower plan." },
-  replenishment_completion: { label: "Replenishment completion", unit: "percent", target: 95, higher: true, interpretation: "Task replenishment yang selesai terhadap task created." },
-  putaway_completion: { label: "Putaway completion", unit: "percent", target: 98, higher: true, interpretation: "Putaway done terhadap actual workload yang diterima." },
-  planogram_accuracy: { label: "Planogram accuracy", unit: "percent", target: 98, higher: true, interpretation: "Kesesuaian penempatan SKU terhadap planogram." },
-  found_rate: { label: "Found rate", unit: "percent", target: 90, higher: true, interpretation: "Share item yang ditemukan dari proses recovery inventory." },
-  mp_fulfill_accuracy: { label: "MP fulfill accuracy", unit: "percent", target: 95, higher: true, interpretation: "Ketersediaan manpower terhadap kebutuhan yang direncanakan." },
-  truck_delivered_rate: { label: "Truck delivered", unit: "percent", target: 98, higher: true, interpretation: "Truck delivered terhadap dedicated truck." },
-  on_time_dispatch: { label: "On-time dispatch", unit: "percent", target: 98, higher: true, interpretation: "Dispatch sesuai cut-off warehouse/fleet." },
-  on_time_arrival: { label: "On-time arrival", unit: "percent", target: 98, higher: true, interpretation: "Arrival route sesuai target." },
+  demand_fill_rate: { label: "Permintaan terlayani", unit: "percent", target: 97, higher: true, interpretation: "Siap kirim dibagi permintaan sebelum pembatalan. Inilah porsi permintaan yang benar-benar dilayani." },
+  sla_checker_inbound: { label: "SLA checker inbound", unit: "percent", target: 98, higher: true, interpretation: "Batas waktu penerimaan. Dipakai sebagai rem saat mengatur jumlah orang." },
+  mandays_variance: { label: "Manday vs budget", unit: "percent", target: 0, higher: false, interpretation: "Negatif berarti hemat. Hanya sah kalau SLA dan produktivitas ikut sehat." },
+  capacity_utilization: { label: "Titik tersibuk alur", unit: "percent", target: 85, higher: false, interpretation: "Yang tertinggi di antara inbound, gudang, dan outbound. Ini bukan isi gudang - untuk itu lihat panel zona." },
+  cancel_rate: { label: "Permintaan dibatalkan", unit: "percent", target: 2, higher: false, interpretation: "Selisih permintaan sebelum dan sesudah pembatalan. Baca bersama layanan dan produktivitas." },
+  troubleshoot_fr: { label: "Recovery troubleshoot", unit: "percent", target: 90, higher: true, interpretation: "Task yang dikerjakan dibanding task yang dibuat." },
+  dcc_accuracy: { label: "Akurasi stok (DCC)", unit: "percent", target: 98, higher: true, interpretation: "Rata-rata akurasi jumlah, lokasi, dan keduanya sekaligus." },
+  pick_to_pf: { label: "Ambil dari pickface", unit: "percent", target: 85, higher: true, interpretation: "Porsi pengambilan yang benar-benar dari pickface. Turun berarti picker mencari ke lokasi cadangan." },
+  attendance_all: { label: "Kehadiran", unit: "percent", target: 96, higher: true, interpretation: "Yang hadir dibanding yang dijadwalkan." },
+  churn_all: { label: "Churn", unit: "percent", target: 5, higher: false, interpretation: "Porsi orang yang keluar. Makin rendah makin baik." },
+  schedule_accuracy: { label: "Akurasi jadwal", unit: "percent", target: 95, higher: true, interpretation: "Kesesuaian manday terjadwal dengan rencana orang. Definisi sumbernya belum dikonfirmasi." },
+  replenishment_completion: { label: "Replenish selesai", unit: "percent", target: 95, higher: true, interpretation: "Task isi ulang yang selesai dibanding yang dibuat." },
+  putaway_completion: { label: "Putaway selesai", unit: "percent", target: 98, higher: true, interpretation: "Putaway yang selesai dibanding beban yang masuk." },
+  planogram_accuracy: { label: "Akurasi planogram", unit: "percent", target: 98, higher: true, interpretation: "Kesesuaian penempatan SKU dengan planogram." },
+  found_rate: { label: "Barang ketemu", unit: "percent", target: 90, higher: true, interpretation: "Porsi barang yang berhasil ditemukan lewat pencarian. Ambang 90% belum dikonfirmasi pemilik metriknya." },
+  mp_fulfill_accuracy: { label: "Pemenuhan orang", unit: "percent", target: 95, higher: true, interpretation: "Orang yang tersedia dibanding kebutuhan yang direncanakan." },
+  truck_delivered_rate: { label: "Truk berangkat", unit: "percent", target: 98, higher: true, interpretation: "Truk yang jalan dibanding armada tetap. Bisa di atas 100% kalau cadangan dipakai." },
+  on_time_dispatch: { label: "Kirim tepat waktu", unit: "percent", target: 98, higher: true, interpretation: "Pengiriman sesuai batas waktu gudang dan fleet." },
+  on_time_arrival: { label: "Tiba tepat waktu", unit: "percent", target: 98, higher: true, interpretation: "Kedatangan rute sesuai target." },
 };
 
 function severity(key: string, value: number | null, target: number | null): Severity {
@@ -503,11 +507,16 @@ function buildInitiatives(
   zones: CapacityZone[],
   economics: OperationsEconomics,
   chains: CausalChain[],
+  statistics: OperationsStatistics,
+  stations: FloorStation[],
 ): Initiative[] {
   type ControlFields = Pick<Initiative, "valueLens" | "successGate" | "stopLoss">;
   type AdaptiveFields = Pick<Initiative, "adaptiveVariant" | "whyNow" | "trigger" | "linkedChainIds">;
   type ExperimentFields = Pick<Initiative, "portfolioRole" | "decisionQuestion" | "counterfactual" | "leadingIndicators">;
-  type Template = Omit<Initiative, "id" | "warehouse" | "confidence" | "priorityScore" | "linkedPainIds" | "evidence" | "priorityBreakdown" | keyof ControlFields | keyof AdaptiveFields | keyof ExperimentFields>;
+  // linkedStationIds and quantified are computed from live data, never authored
+  // into a template — a hardcoded "size of the prize" is the kind of number that
+  // survives long after it stopped being true.
+  type Template = Omit<Initiative, "id" | "warehouse" | "confidence" | "priorityScore" | "linkedPainIds" | "evidence" | "priorityBreakdown" | "linkedStationIds" | "quantified" | keyof ControlFields | keyof AdaptiveFields | keyof ExperimentFields>;
   const controls: Record<string, ControlFields> = {
     forecast: { valueLens: "cost", successGate: "Forecast 90–110%, productivity ≥100%, cancel ≤2%.", stopLoss: "Hentikan pengurangan MP jika SLA <98% atau demand fill <97%." },
     people: { valueLens: "cost", successGate: "Attendance ≥96% dan SLA ≥98% pada volume band yang sama.", stopLoss: "Batalkan redeployment jika queue atau SLA memburuk dua cut-off berturut-turut." },
@@ -544,6 +553,102 @@ function buildInitiatives(
   const kpiValue = (key: string) => kpis.find((item) => item.key === key)?.value ?? null;
   const formatPct = (value: number | null) => value === null ? "n/a" : `${value.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%`;
   const highestZone = [...zones].filter((zone) => zone.utilization !== null).sort((a, b) => (b.utilization ?? 0) - (a.utilization ?? 0))[0];
+
+  /* The bench each action is actually performed at. An action plan that names a
+     KPI but not a station leaves the reader to guess where to stand. */
+  const stationsByKey: Record<string, string[]> = {
+    forecast: ["po-arrival", "outbound-wave"],
+    people: ["grn-checker", "outbound-wave"],
+    productivity: ["outbound-wave", "replenishment"],
+    cancel: ["outbound-wave"],
+    capacity: ["zone-capacity", "putaway"],
+    replenishment: ["replenishment", "outbound-wave"],
+    troubleshoot: ["movement-troubleshoot", "dcc-sloc"],
+    dcc: ["dcc-sloc", "putaway"],
+    fleet: ["loading-hub", "packing-check"],
+  };
+
+  const units = (value: number | null) => value === null ? "n/a" : `${Math.round(value).toLocaleString("id-ID")} unit`;
+  const mandays = (value: number | null) => value === null ? "n/a" : `${value.toLocaleString("id-ID", { maximumFractionDigits: 1 })} MD`;
+  const manpowerFor = (role: string) => statistics.manpower.find((item) => item.key === role) ?? null;
+
+  /**
+   * The size of the prize, computed from the active window rather than asserted.
+   * Every entry is arithmetic on numbers already on the page — "if cancel had been
+   * at target, this many units would have stayed in the order book" — not a
+   * forecast of what the initiative will deliver. The note says so.
+   */
+  const quantify = (key: string): Initiative["quantified"] => {
+    const cancel = kpiValue("cancel_rate");
+    const demandFill = kpiValue("demand_fill_rate");
+    const attainment = kpiValue("productivity_attainment");
+    const pickface = kpiValue("pick_to_pf");
+    const dcc = kpiValue("dcc_accuracy");
+    const arithmetic = "Aritmetika pada rentang aktif, bukan janji hasil.";
+    switch (key) {
+      case "cancel": {
+        const recoverable = economics.requestedQty !== null && cancel !== null && cancel > 2 ? economics.requestedQty * ((cancel - 2) / 100) : null;
+        return [
+          { label: "Bila batal turun ke 2%", value: units(recoverable), note: `${arithmetic} Dihitung dari permintaan awal ${units(economics.requestedQty)}.` },
+          { label: "Belum terlayani sekarang", value: units(economics.unservedDemandQty), note: `Permintaan terlayani ${formatPct(demandFill)} dari target 97%.` },
+        ];
+      }
+      case "productivity": {
+        const picker = manpowerFor("picker");
+        return [
+          { label: "Kebutuhan vs kehadiran picker", value: `${mandays(picker?.requiredMandays ?? null)} vs ${mandays(picker?.actualMandays ?? null)}`, note: "Kebutuhan = volume ÷ target produktivitas dari sumber." },
+          { label: "Selisih ke target", value: attainment === null ? "n/a" : `${(100 - attainment).toLocaleString("id-ID", { maximumFractionDigits: 1 })} poin`, note: `${arithmetic} Pencapaian sekarang ${formatPct(attainment)}.` },
+        ];
+      }
+      case "forecast": {
+        const shape = statistics.outboundForecast;
+        return [
+          { label: shape.dominant === "bias" ? "Arah error rencana" : "Naik-turun harian", value: shape.dominant === "bias" ? formatPct(shape.biasPct) : formatPct(shape.dispersionPct), note: shape.dominant === "bias" ? "Konsisten satu arah—ubah angka rencananya." : "Rata-rata sudah dekat; yang dibutuhkan tenaga cadangan." },
+          { label: "Sebaran permintaan harian", value: statistics.demandVariability.coefficientOfVariation === null ? "n/a" : `CV ${statistics.demandVariability.coefficientOfVariation.toFixed(2)}`, note: `Puncak ${statistics.demandVariability.peakToMedian?.toFixed(2) ?? "n/a"}× hari tengah. Satu angka staffing tidak muat untuk semua hari.` },
+        ];
+      }
+      case "people": {
+        const checker = manpowerFor("checker");
+        return [
+          { label: "Kebutuhan vs kehadiran checker", value: `${mandays(checker?.requiredMandays ?? null)} vs ${mandays(checker?.actualMandays ?? null)}`, note: "Kebutuhan = volume inbound ÷ target checker dari sumber." },
+          { label: "Selisih manday", value: mandays(checker?.gapMandays ?? null), note: `${arithmetic} Positif berarti beban kemarin butuh lebih banyak orang.` },
+        ];
+      }
+      case "capacity":
+        return [
+          { label: "Sisa ruang zona tersempit", value: formatPct(economics.capacityHeadroomPct), note: `${highestZone?.zone ?? "Zona"} pada ${formatPct(highestZone?.utilization ?? null)}. Waspada 85%, kritis 92%.` },
+        ];
+      case "replenishment":
+        return [
+          { label: "Pengambilan dari pickface", value: formatPct(pickface), note: `${arithmetic} Setiap poin di bawah 85% adalah perjalanan tambahan picker ke lokasi cadangan.` },
+        ];
+      case "troubleshoot": {
+        const station = stations.find((item) => item.id === "movement-troubleshoot");
+        const created = station?.signals.find((item) => item.key === "troubleshoot_created")?.value ?? null;
+        const executed = station?.signals.find((item) => item.key === "troubleshoot_executed")?.value ?? null;
+        return [
+          { label: "Task belum dikerjakan", value: created !== null && executed !== null ? `${Math.max(0, Math.round(created - executed)).toLocaleString("id-ID")} task` : "n/a", note: `Dibuat ${units(created)?.replace(" unit", " task") ?? "n/a"}, dikerjakan ${units(executed)?.replace(" unit", " task") ?? "n/a"}.` },
+        ];
+      }
+      case "dcc": {
+        const station = stations.find((item) => item.id === "dcc-sloc");
+        const ldpValue = station?.signals.find((item) => item.key === "ldp_value")?.value ?? null;
+        return [
+          { label: "Nilai selisih kurang", value: ldpValue === null ? "n/a" : new Intl.NumberFormat("id-ID", { notation: "compact", style: "currency", currency: "IDR", maximumFractionDigits: 1 }).format(ldpValue), note: `Akurasi sekarang ${formatPct(dcc)}. Prioritas audit mengikuti nilai, bukan jumlah kasus.` },
+        ];
+      }
+      case "fleet": {
+        const station = stations.find((item) => item.id === "loading-hub");
+        const rts = station?.signals.find((item) => item.key === "outbound_rts")?.value ?? null;
+        const hub = station?.signals.find((item) => item.key === "outbound_actual_hub")?.value ?? null;
+        return [
+          { label: "Selisih siap kirim vs diterima hub", value: rts !== null && hub !== null ? units(Math.max(0, rts - hub)) : "n/a", note: "Ditutup di hari yang sama atau berubah menjadi klaim." },
+        ];
+      }
+      default:
+        return [];
+    }
+  };
   const chainByKey: Record<string, string[]> = {
     forecast: ["forecast-labor-productivity"],
     people: ["forecast-labor-productivity", "checker-labor-sla"],
@@ -697,6 +802,8 @@ function buildInitiatives(
       priorityBreakdown,
       linkedPainIds: [pain.id],
       evidence: [...pain.evidence.slice(0, 3), ...(supportingRelationship ? [supportingRelationship.narrative] : [])],
+      linkedStationIds: (stationsByKey[key] ?? []).filter((id) => stations.some((station) => station.id === id)),
+      quantified: quantify(key),
     } satisfies Initiative];
   });
   const fallbacks = ["forecast", "productivity"].filter((key) => !selected.some((item) => item.id.includes(`-${key}-`))).map((key) => ({
@@ -711,6 +818,8 @@ function buildInitiatives(
     priorityBreakdown: { impact: 0, recurrence: 0, evidence: 0, feasibility: templates[key].effort === "low" ? 90 : 70 },
     linkedPainIds: [],
     evidence: ["Inisiatif dasar; evidence berulang belum mencapai ambang prioritas."],
+    linkedStationIds: (stationsByKey[key] ?? []).filter((id) => stations.some((station) => station.id === id)),
+    quantified: quantify(key),
   } satisfies Initiative));
   // Evidence-linked initiatives are ranked and filled first. Fallbacks only ever
   // occupy leftover slots: sorting them into one pool let a hardcoded score of 55
@@ -1979,6 +2088,128 @@ function decisionCoverageGaps(
 }
 
 /**
+ * Statistics the floor can act on.
+ *
+ * Each block answers one question that a single percentage cannot: whether the
+ * plan is wrong in one direction or just noisy, whether a bad day is an event
+ * or the process, whether a small-sample percentage can settle an argument, and
+ * how many people the workload actually needed. No-operation days are excluded
+ * throughout — a closed day is not a zero-productivity day.
+ */
+function operationsStatistics(points: MetricPoint[], window: Window, chartWindow: Window, skipDates: Set<string>): OperationsStatistics {
+  const dates = datesInWindow(window).filter((date) => !skipDates.has(date));
+  const chartDates = datesInWindow(chartWindow).filter((date) => !skipDates.has(date));
+  const daily = (key: string, date: string, mode: AggregationMode = "sum") => dailyMetric(points, key, date, mode);
+  const pairsFor = (forecastKey: string, actualKey: string) => dates
+    .map((date) => ({ forecast: daily(forecastKey, date), actual: daily(actualKey, date) }))
+    .filter((pair): pair is { forecast: number; actual: number } => pair.forecast !== null && pair.actual !== null);
+
+  const series = (key: string) => chartDates.map((date) => ({ date, value: dailyDerived(points, key, date) }));
+  const total = (key: string) => metricValue(points, key, window, "sum").value;
+
+  const outboundForecast = forecastQuality(pairsFor("forecast_weekly_outbound", "outbound_before_cancel"));
+  const inboundForecast = forecastQuality(pairsFor("forecast_weekly_inbound", "actual_inbound"));
+  const demandVariability = variability(dates.map((date) => daily("outbound_before_cancel", date)).filter((value): value is number => value !== null && value > 0));
+
+  const controlCharts = [
+    controlChart("productivity_attainment", "Produktivitas picker", "percent", series("productivity_attainment")),
+    controlChart("demand_fill_rate", "Permintaan terlayani", "percent", series("demand_fill_rate")),
+    controlChart("cancel_rate", "Permintaan dibatalkan", "percent", series("cancel_rate")),
+  ].filter((chart) => chart.state !== "insufficient" || chart.sampleSize > 0);
+
+  const onTime = total("checker_on_time");
+  const late = total("checker_late");
+  const trucksDelivered = total("actual_truck_delivered");
+  const trucksDedicated = total("truck_dedicated");
+  const proportions = [
+    onTime !== null && late !== null && onTime + late > 0
+      ? wilsonInterval("vendor_otif", "Kiriman vendor tepat waktu", onTime, onTime + late, 95)
+      : null,
+    // Trucks delivered can exceed the dedicated fleet because on-call units are
+    // counted in the numerator, so the interval is capped at the fleet actually
+    // committed and the excess is reported separately by the loading station.
+    trucksDelivered !== null && trucksDedicated !== null && trucksDedicated > 0
+      ? wilsonInterval("truck_delivered", "Truk berangkat dari armada tetap", Math.min(trucksDelivered, trucksDedicated), trucksDedicated, 98)
+      : null,
+  ].filter((item): item is NonNullable<typeof item> => item !== null);
+
+  const manpower = [
+    requiredMandays("picker", "Picker", total("outbound_rts"), metricValue(points, "picker_productivity_target", window, "average").value, total("actual_picker_mandays"), total("budget_picker_mandays")),
+    requiredMandays("packer", "Packer", total("outbound_rts"), metricValue(points, "packer_productivity_target", window, "average").value, total("actual_packer_mandays"), total("budget_packer_mandays")),
+    requiredMandays("loader", "Loader", total("outbound_rts"), metricValue(points, "loader_productivity_target", window, "average").value, total("actual_loader_mandays"), total("budget_loader_mandays")),
+    requiredMandays("checker", "Checker inbound", total("actual_inbound"), metricValue(points, "checker_productivity_target", window, "average").value, total("actual_checker_mandays"), total("budget_checker_mandays")),
+    requiredMandays("putaway", "Putaway", total("putaway_done"), metricValue(points, "putaway_productivity_target", window, "average").value, total("actual_putaway_mandays"), total("budget_putaway_mandays")),
+  ].filter((item) => item.requiredMandays !== null);
+
+  const chain = yieldChain([
+    { key: "forecast", label: "Rencana", value: total("forecast_weekly_outbound") },
+    { key: "before-cancel", label: "Permintaan masuk", value: total("outbound_before_cancel") },
+    { key: "after-cancel", label: "Setelah dibatalkan", value: total("outbound_requested") },
+    { key: "rts", label: "Siap kirim", value: total("outbound_rts") },
+    { key: "hub", label: "Diterima hub", value: total("outbound_actual_hub") },
+  ]);
+
+  const pct = (value: number | null, digits = 1) => value === null ? "n/a" : `${value.toLocaleString("id-ID", { minimumFractionDigits: digits, maximumFractionDigits: digits })}%`;
+  const num = (value: number | null, digits = 0) => value === null ? "n/a" : value.toLocaleString("id-ID", { maximumFractionDigits: digits });
+  const biggestLeak = [...chain].filter((stage) => stage.lossSharePct !== null).sort((a, b) => (b.lossSharePct ?? 0) - (a.lossSharePct ?? 0))[0];
+  const shortest = [...manpower].filter((item) => item.gapMandays !== null).sort((a, b) => (b.gapMandays ?? 0) - (a.gapMandays ?? 0))[0];
+  const unstable = controlCharts.find((chart) => chart.state === "special_cause") ?? controlCharts.find((chart) => chart.state === "shifted");
+  const widest = [...proportions].sort((a, b) => (b.marginPct ?? 0) - (a.marginPct ?? 0))[0];
+
+  const readouts: OperationsStatistics["readouts"] = [
+    {
+      id: "forecast-shape",
+      question: "Rencananya salah arah, atau cuma naik-turun?",
+      answer: outboundForecast.dominant === "insufficient"
+        ? "Belum cukup hari untuk memisahkan keduanya."
+        : outboundForecast.dominant === "bias"
+          ? `Salah arah. Permintaan rata-rata ${pct(outboundForecast.biasPct)} ${outboundForecast.direction === "over" ? "di atas" : "di bawah"} rencana, dan itu konsisten. Ubah angka rencananya.`
+          : outboundForecast.dominant === "dispersion"
+            ? `Cuma naik-turun. Rata-ratanya hampir tepat (${pct(outboundForecast.biasPct)}), tapi simpangan harian ${pct(outboundForecast.dispersionPct)}. Ganti angka rencana tidak akan menolong—yang dibutuhkan tenaga cadangan.`
+            : `Campuran: arah ${pct(outboundForecast.biasPct)}, simpangan ${pct(outboundForecast.dispersionPct)}. Perbaiki arahnya dulu, sisanya baru terlihat.`,
+      method: "Selisih harian (aktual − rencana) ÷ rencana. Rata-ratanya = arah. Rata-rata nilai mutlaknya = total error. Selisih keduanya = naik-turun yang tidak bisa dihilangkan dengan mengubah rencana.",
+      caveat: outboundForecast.sampleSize < 14 ? `Baru ${outboundForecast.sampleSize} hari.` : null,
+    },
+    {
+      id: "process-stability",
+      question: "Hari jelek kemarin itu kejadian khusus atau memang begitu prosesnya?",
+      answer: unstable ? `${unstable.label}: ${unstable.finding}` : controlCharts.length ? `${controlCharts[0].label}: ${controlCharts[0].finding}` : "Belum ada deret harian yang cukup panjang.",
+      method: "Batas kendali individual: rata-rata ± 3σ, dengan σ dari rata-rata selisih antar hari ÷ 1,128. Titik di luar batas = penyebab khusus. Delapan hari berturut di satu sisi = prosesnya bergeser.",
+      caveat: "Stabil bukan berarti bagus. Artinya hanya: hasil ini yang akan terus keluar kalau prosesnya tidak diubah.",
+    },
+    {
+      id: "small-sample",
+      question: "Persentase ini bisa dipakai berdebat, atau sampelnya terlalu kecil?",
+      answer: widest
+        ? `${widest.label} ${pct(widest.pointPct)} dari ${num(widest.trials)} pengamatan, rentang sebenarnya ${pct(widest.lowPct)}–${pct(widest.highPct)}. ${widest.reliable ? "Cukup untuk dipakai." : "Terlalu sedikit untuk menilai pergerakan kecil."}`
+        : "Belum ada persentase dengan penyebut yang bisa dihitung.",
+      method: "Selang kepercayaan Wilson 95%. Dipakai karena pendekatan normal meleset justru di dekat 0% dan 100%, dan di situlah angka ketepatan waktu berada.",
+      caveat: null,
+    },
+    {
+      id: "manpower-need",
+      question: "Beban kerja kemarin sebenarnya butuh berapa orang?",
+      answer: shortest && shortest.gapMandays !== null && Math.abs(shortest.gapMandays) >= 1
+        ? `${shortest.role}: butuh ${num(shortest.requiredMandays, 1)} manday, hadir ${num(shortest.actualMandays, 1)}. ${shortest.gapMandays > 0 ? `Kurang ${num(shortest.gapMandays, 1)} manday.` : `Lebih ${num(Math.abs(shortest.gapMandays), 1)} manday.`}`
+        : manpower.length ? "Kebutuhan dan kehadiran sudah sejalan di semua peran." : "Target produktivitas atau volume belum terbaca.",
+      method: "Kebutuhan manday = volume ÷ target produktivitas per manday. Target diambil dari kolom target di sumber, bukan standar baru.",
+      caveat: "Ini kebutuhan rata-rata harian. Beban yang menumpuk di satu jam tetap butuh orang lebih banyak pada jam itu.",
+    },
+    {
+      id: "biggest-leak",
+      question: "Dari rencana sampai hub, bocornya paling besar di mana?",
+      answer: biggestLeak && biggestLeak.lossQty
+        ? `Di tahap ${biggestLeak.label.toLowerCase()}: ${num(biggestLeak.lossQty)} unit, ${pct(biggestLeak.lossSharePct)} dari seluruh kebocoran. Sampai hub, ${pct(chain.at(-1)?.cumulativeYieldPct ?? null)} rencana awal yang benar-benar sampai.`
+        : "Rantai belum lengkap terbaca.",
+      method: "Konversi tiap tahap terhadap tahap sebelumnya, hasil kumulatif terhadap tahap pertama, dan porsi tiap tahap terhadap total kebocoran.",
+      caveat: null,
+    },
+  ];
+
+  return { outboundForecast, inboundForecast, demandVariability, controlCharts, proportions, manpower, yieldChain: chain, readouts };
+}
+
+/**
  * Bridges the KPI engine to the floor-station layer.
  *
  * Two rules hold the bridge together. Station signals that are already engine
@@ -2092,9 +2323,10 @@ export function buildAnalysis(
   const intelligence = intelligenceSummary(semanticCatalog);
   const picture = operatingPicture(kpis, zones, economics, chains);
   const threads = operationalThreads(warehousePoints, current, kpis);
-  const floor = floorStationLayer(warehousePoints, current, previous);
-  const contextGaps = decisionCoverageGaps(warehousePoints, current, kpis, semanticCatalog, threads, zones);
   const chartWindow = visualWindow(current, effectivePeriod);
+  const floor = floorStationLayer(warehousePoints, current, previous);
+  const statistics = operationsStatistics(warehousePoints, current, chartWindow, noOpsDates);
+  const contextGaps = decisionCoverageGaps(warehousePoints, current, kpis, semanticCatalog, threads, zones);
   const activeTrendKeys = division === "All" ? ["forecast_accuracy", "productivity_attainment", "demand_fill_rate", "capacity_utilization", "cancel_rate", "dcc_accuracy"]
     : MODULES.find((module) => module.division === division)?.keys.slice(0, 6) ?? ["forecast_accuracy", "productivity_attainment"];
 
@@ -2139,10 +2371,12 @@ export function buildAnalysis(
     operationalThreads: threads,
     floorStations: floor.stations,
     floorBriefing: floor.briefing,
+    statistics,
+    knowledgeBase: buildKnowledgeBase(),
     contextGaps,
     causalChains: chains,
     painPoints: pains,
-    initiatives: buildInitiatives(warehouse, pains, relationships, kpis, zones, economics, chains),
+    initiatives: buildInitiatives(warehouse, pains, relationships, kpis, zones, economics, chains, statistics, floor.stations),
     filters: {
       warehouses: ["PGS", "SRG", "BIT", "STR"],
       divisions,

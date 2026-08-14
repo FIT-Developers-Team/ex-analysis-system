@@ -144,6 +144,10 @@ export interface Initiative {
   counterfactual: string;
   /** Early signals used before the lagging success gate is available. */
   leadingIndicators: string[];
+  /** Floor stations this action is actually executed at. */
+  linkedStationIds: string[];
+  /** The size of the prize, computed from the active window rather than asserted. */
+  quantified: Array<{ label: string; value: string; note: string }>;
 }
 
 export interface AnalysisPayload {
@@ -186,6 +190,8 @@ export interface AnalysisPayload {
   operationalThreads: OperationalThread[];
   floorStations: FloorStation[];
   floorBriefing: FloorBriefing;
+  statistics: OperationsStatistics;
+  knowledgeBase: KnowledgeArticle[];
   contextGaps: DecisionCoverageGap[];
   causalChains: CausalChain[];
   painPoints: PainPoint[];
@@ -547,10 +553,12 @@ export interface FloorFailureMode {
   evidence: string[];
 }
 
+export type FloorStage = "Perencanaan" | "Inbound" | "Inventory" | "Outbound" | "Dispatch" | "Mutu";
+
 export interface FloorStation {
   id: string;
   sequence: number;
-  stage: "Inbound" | "Inventory" | "Outbound" | "Dispatch";
+  stage: FloorStage;
   title: string;
   /** Where this sits in the working day. Protocol, not a measured timestamp. */
   shiftMoment: string;
@@ -583,6 +591,38 @@ export interface FloorBriefing {
   totalStations: number;
   /** Ordered walk for this shift: which bench to stand at, and why. */
   walkOrder: Array<{ stationId: string; title: string; reason: string; action: string }>;
+}
+
+/* ---------------------------------------------------------------------------
+   Operational statistics. Definitions live in lib/analysis/operations-math.ts;
+   these are the shapes the payload carries.
+--------------------------------------------------------------------------- */
+
+export interface OperationsStatistics {
+  outboundForecast: import("@/lib/analysis/operations-math").ForecastQuality;
+  inboundForecast: import("@/lib/analysis/operations-math").ForecastQuality;
+  demandVariability: import("@/lib/analysis/operations-math").Variability;
+  controlCharts: import("@/lib/analysis/operations-math").ControlChart[];
+  proportions: import("@/lib/analysis/operations-math").ProportionEstimate[];
+  manpower: import("@/lib/analysis/operations-math").ManpowerRequirement[];
+  yieldChain: import("@/lib/analysis/operations-math").YieldStage[];
+  /** Plain-language reading of the four questions the math answers. */
+  readouts: Array<{ id: string; question: string; answer: string; method: string; caveat: string | null }>;
+}
+
+export interface KnowledgeArticle {
+  id: string;
+  group: "Proses" | "Rumus" | "Aturan";
+  domain: string;
+  title: string;
+  /** One sentence a new supervisor can act on. */
+  summary: string;
+  body: string[];
+  /** Stated formula, when the article defines a number. */
+  formula: string | null;
+  /** Where the threshold or definition comes from. */
+  basis: string | null;
+  relatedStationIds: string[];
 }
 
 export interface SimulationInputs {

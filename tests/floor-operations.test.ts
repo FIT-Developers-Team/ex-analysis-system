@@ -56,12 +56,17 @@ describe("floor station configuration", () => {
     expect(dangling).toEqual([]);
   });
 
-  it("covers the whole chain from vendor arrival to hub handover", () => {
-    expect(FLOOR_STATIONS).toHaveLength(12);
-    expect(FLOOR_STATIONS[0].stage).toBe("Inbound");
-    expect(FLOOR_STATIONS.at(-1)?.stage).toBe("Dispatch");
+  it("runs the chain in the order the work actually happens", () => {
+    // The sequence is the walk order, so a station must never appear before the
+    // one that feeds it. Stages are ordered; station order has to respect that.
+    const order = ["Perencanaan", "Inbound", "Inventory", "Outbound", "Dispatch", "Mutu"];
+    const indices = FLOOR_STATIONS.map((station) => order.indexOf(station.stage));
+    expect(indices.every((value) => value >= 0)).toBe(true);
+    expect([...indices].sort((a, b) => a - b)).toEqual(indices);
+    expect(new Set(FLOOR_STATIONS.map((station) => station.id)).size).toBe(FLOOR_STATIONS.length);
     expect(FLOOR_STATIONS.every((station) => station.wmsSteps.length > 0 && station.gembaChecks.length > 0)).toBe(true);
     expect(FLOOR_STATIONS.every((station) => station.failureModes.every((mode) => mode.containment && mode.correction && mode.trigger))).toBe(true);
+    expect(FLOOR_STATIONS.every((station) => station.signals.length > 0)).toBe(true);
   });
 });
 
@@ -107,7 +112,7 @@ describe("floor station state", () => {
     expect(stations.every((station) => station.state === "unmeasured")).toBe(true);
     expect(stations.every((station) => station.score === null)).toBe(true);
     const briefing = buildFloorBriefing(stations);
-    expect(briefing.unmeasuredCount).toBe(12);
+    expect(briefing.unmeasuredCount).toBe(FLOOR_STATIONS.length);
     expect(briefing.measuredStations).toBe(0);
     expect(briefing.constraintStationId).toBeNull();
     expect(briefing.headline).toContain("Belum ada stasiun yang terukur");
@@ -170,7 +175,7 @@ describe("floor layer inside the analysis payload", () => {
     }
     const output = buildAnalysis(dataset(points), "PGS", "weekly");
 
-    expect(output.floorStations).toHaveLength(12);
+    expect(output.floorStations).toHaveLength(FLOOR_STATIONS.length);
     const cancelKpi = output.kpis.find((item) => item.key === "cancel_rate")?.value;
     const wave = output.floorStations.find((station) => station.id === "outbound-wave");
     expect(wave?.signals.find((item) => item.key === "cancel_rate")?.value).toBe(cancelKpi);

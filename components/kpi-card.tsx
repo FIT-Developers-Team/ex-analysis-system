@@ -27,7 +27,7 @@ function formatTarget(metric: MetricReading): string | null {
 const severityLabel: Record<Severity, string> = {
   good: "Sesuai",
   watch: "Waspada",
-  critical: "Breach",
+  critical: "Lewat ambang",
   neutral: "Tanpa data",
 };
 

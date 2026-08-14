@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   ArrowRight,
   BarChart3,
+  BookOpen,
   Boxes,
   CalendarDays,
   CheckCircle2,
@@ -25,6 +26,7 @@ import {
   RefreshCw,
   ScanLine,
   Search,
+  ShieldAlert,
   SlidersHorizontal,
   Sparkles,
   TableProperties,
@@ -34,6 +36,7 @@ import {
 } from "lucide-react";
 import {
   CapacityHistoryChart,
+  ControlChartView,
   DriverChart,
   FulfillmentFunnelChart,
   HealthGauge,
@@ -52,16 +55,17 @@ import { runSimulation } from "@/lib/analysis/simulation";
 import type { AnalysisPayload, DecisionInsight, FloorSignal, FloorStation, Period, SimulationInputs, WarehouseCode } from "@/lib/types";
 import { PRIORITY_WAREHOUSES } from "@/lib/types";
 
-type View = "overview" | "floor" | "flow" | "relationships" | "simulation" | "initiatives" | "data";
+type View = "overview" | "floor" | "flow" | "relationships" | "simulation" | "initiatives" | "knowledge" | "data";
 
 const nav = [
-  { id: "overview" as const, group: "Analisis", label: "Ringkasan operasi", short: "Ringkasan", icon: LayoutDashboard },
-  { id: "floor" as const, group: "Analisis", label: "Lantai operasi", short: "Lantai", icon: Boxes },
-  { id: "flow" as const, group: "Analisis", label: "Alur volume", short: "Alur", icon: TrendingUp },
-  { id: "relationships" as const, group: "Analisis", label: "Penyebab & bukti", short: "Bukti", icon: GitBranch },
-  { id: "simulation" as const, group: "Tindakan", label: "Simulasi", short: "Simulasi", icon: FlaskConical },
-  { id: "initiatives" as const, group: "Tindakan", label: "Rencana aksi", short: "Aksi", icon: Lightbulb },
-  { id: "data" as const, group: "Tindakan", label: "Data & definisi", short: "Data", icon: Database },
+  { id: "overview" as const, group: "Lihat", label: "Ringkasan", short: "Ringkasan", icon: LayoutDashboard },
+  { id: "floor" as const, group: "Lihat", label: "Lantai", short: "Lantai", icon: Boxes },
+  { id: "flow" as const, group: "Lihat", label: "Alur volume", short: "Alur", icon: TrendingUp },
+  { id: "relationships" as const, group: "Lihat", label: "Bukti", short: "Bukti", icon: GitBranch },
+  { id: "simulation" as const, group: "Putuskan", label: "Simulasi", short: "Simulasi", icon: FlaskConical },
+  { id: "initiatives" as const, group: "Putuskan", label: "Rencana aksi", short: "Aksi", icon: Lightbulb },
+  { id: "knowledge" as const, group: "Rujukan", label: "Pengetahuan", short: "Ilmu", icon: BookOpen },
+  { id: "data" as const, group: "Rujukan", label: "Data & definisi", short: "Data", icon: Database },
 ];
 
 const navGroups = [...new Set(nav.map((item) => item.group))];
@@ -185,7 +189,7 @@ function InsightCard({ insight, index }: { insight: DecisionInsight; index: numb
   const priorityText = insight.priority === "critical" ? "kritis" : insight.priority === "high" ? "tinggi" : "sedang";
   return (
     <article className={`insight-card insight-card--${insight.priority}`}>
-      <header><span>0{index + 1}</span><div><small>{insight.domain === "Labor economics" ? "Ekonomi manpower" : insight.domain}</small><h3>{insight.title}</h3></div><b>{priorityText}</b></header>
+      <header><span>0{index + 1}</span><div><small>{insight.domain === "Labor economics" ? "Biaya tenaga kerja" : insight.domain}</small><h3>{insight.title}</h3></div><b>{priorityText}</b></header>
       <p>{insight.observation}</p>
       <div className="insight-implication"><strong>Mengapa penting</strong><span>{insight.implication}</span></div>
       <div className="insight-action"><ArrowRight size={15} /><span>{insight.recommendedAction}</span></div>
@@ -215,7 +219,7 @@ function EconomicsBrief({ data }: { data: AnalysisPayload }) {
       <div className="economics-metrics">
         <div><span>Intensitas tenaga</span><strong>{fmtNumber(item.costToServeMdPerThousand, 2)}</strong><small>MD / 1.000 unit</small></div>
         <div><span>Perubahan</span><strong>{item.costToServeDeltaPct === null ? "—" : fmtSigned(item.costToServeDeltaPct)}</strong><small>vs periode setara</small></div>
-        <div><span>Produktivitas terjaga</span><strong>{item.serviceAdjustedProductivity === null ? "—" : `${fmtNumber(item.serviceAdjustedProductivity)}%`}</strong><small>setelah guardrail service</small></div>
+        <div><span>Produktivitas terjaga</span><strong>{item.serviceAdjustedProductivity === null ? "—" : `${fmtNumber(item.serviceAdjustedProductivity)}%`}</strong><small>setelah dikoreksi layanan</small></div>
         <div><span>Demand tak terlayani</span><strong>{fmtNumber(item.unservedDemandQty, 0)}</strong><small>unit dari demand awal</small></div>
       </div>
     </section>
@@ -231,7 +235,7 @@ function OperatingPictureBrief({ data }: { data: AnalysisPayload }) {
         <div className="operating-picture__status"><strong>{picture.label}</strong><span>Keyakinan {confidenceLabel[picture.confidence]}</span></div>
       </header>
       <p className="operating-picture__situation">{picture.situation}</p>
-      <div className="operating-signature" aria-label="Penanda kondisi operasi">{picture.signature.length ? picture.signature.map((item) => <span key={item}>{signatureLabel(item)}</span>) : <span>Tidak ada breach dominan</span>}</div>
+      <div className="operating-signature" aria-label="Penanda kondisi operasi">{picture.signature.length ? picture.signature.map((item) => <span key={item}>{signatureLabel(item)}</span>) : <span>Tidak ada masalah dominan</span>}</div>
       <div className="decision-sequence" aria-label="Urutan keputusan">
         {picture.decisionSequence.map((step, index) => <article key={`${step.phase}-${step.owner}`}><span>0{index + 1} · {phaseLabel[step.phase] ?? step.phase}</span><strong>{step.action}</strong><p>{step.owner}</p><small>Selesai bila: {step.exitGate}</small></article>)}
       </div>
@@ -273,7 +277,7 @@ function FloorConstraintStrip({ data, openFloor }: { data: AnalysisPayload; open
   );
 }
 
-function ExecutiveCockpit({ data, openInitiatives, openFloor }: { data: AnalysisPayload; openInitiatives: () => void; openFloor: () => void }) {
+function ExecutiveCockpit({ data, openInitiatives, openFloor, openKnowledge }: { data: AnalysisPayload; openInitiatives: () => void; openFloor: () => void; openKnowledge: () => void }) {
   // fulfillment_rate and demand_fill_rate sit side by side on purpose: the first is
   // measured after cancellation and the second before it, and the gap between them
   // is the share of demand that was dropped rather than served.
@@ -297,22 +301,27 @@ function ExecutiveCockpit({ data, openInitiatives, openFloor }: { data: Analysis
       <FloorConstraintStrip data={data} openFloor={openFloor} />
       <OperatingPictureBrief data={data} />
 
-      <div className="kpi-rail-header"><div><span>Guardrail utama</span><strong>KPI pembentuk skor</strong></div><small>Geser untuk melihat semua</small></div>
-      <section className="kpi-strip" aria-label="KPI guardrail utama">{priority.map((metric) => <KpiCard key={metric.key} metric={metric} />)}</section>
+      <div className="kpi-rail-header"><div><span>Ambang utama</span><strong>Angka pembentuk skor</strong></div><small>Geser untuk melihat semua</small></div>
+      <section className="kpi-strip" aria-label="Angka pembentuk skor">{priority.map((metric) => <KpiCard key={metric.key} metric={metric} />)}</section>
 
       {breaching.length > 0 && (
         <section className="panel guardrail-banner">
           <AlertTriangle size={18} />
           <div>
-            <strong>{breaching.length} KPI menembus guardrail</strong>
-            <p>{breaching.map((item) => `${item.label} ${item.value === null ? "n/a" : `${item.value.toFixed(1)}%`} (target ${item.target}%)`).join(" · ")}. Skor agregat tidak boleh menutupi breach.</p>
+            <strong>{breaching.length} angka lewat ambang</strong>
+            <p>{breaching.map((item) => `${item.label} ${item.value === null ? "n/a" : `${item.value.toFixed(1)}%`} (target ${item.target}%)`).join(" · ")}. Skor rata-rata tidak boleh menutupinya.</p>
           </div>
         </section>
       )}
 
       <section className="section-block">
-        <SectionHeader eyebrow="Keputusan" title="Yang perlu dilakukan sekarang" description="Prioritas sudah menimbang volume, mandays, SLA, kapasitas, cancel, dan inventory." />
+        <SectionHeader eyebrow="Keputusan" title="Yang perlu dilakukan sekarang" description="Urutannya sudah menimbang volume, orang, SLA, kapasitas, pembatalan, dan inventory." />
         <div className="insight-grid">{data.decisionInsights.slice(0, 3).map((insight, index) => <InsightCard insight={insight} index={index} key={insight.id} />)}</div>
+      </section>
+
+      <section className="section-block">
+        <SectionHeader eyebrow="Angka" title="Yang tidak bisa dijawab satu persen" description="Arah error, hari yang benar-benar aneh, dan berapa orang yang sebenarnya dibutuhkan." action={<button type="button" className="ghost-button" onClick={openKnowledge}>Lihat semua <ChevronRight size={15} /></button>} />
+        <StatisticsReadout data={data} compact />
       </section>
 
       <section className="split-grid split-grid--wide-left">
@@ -328,7 +337,7 @@ function ExecutiveCockpit({ data, openInitiatives, openFloor }: { data: Analysis
       </section>
 
       <section className="panel flow-panel">
-        <SectionHeader eyebrow="Lintas fungsi" title="Dampak saling terkait" description="Manpower dan rencana memengaruhi seluruh alur operasi." />
+        <SectionHeader eyebrow="Lintas fungsi" title="Dampak saling terkait" description="Orang dan rencana memengaruhi seluruh alur." />
         <OperationsFlow modules={data.functionalModules} />
       </section>
 
@@ -358,7 +367,7 @@ function ExecutiveCockpit({ data, openInitiatives, openFloor }: { data: Analysis
       </section>
 
       <section className="panel comparison-panel">
-        <SectionHeader eyebrow="Perbandingan WH" title={`PGS · SRG · BIT · STR · ${fmtDate(data.warehouseComparison.find((row) => row.asOf)?.asOf ?? data.context.asOf)}`} description="Skor memakai KPI dan cut-off yang sama. Tanda ⚠ berarti pilar data tidak lengkap sehingga peringkat tidak setara." />
+        <SectionHeader eyebrow="Perbandingan WH" title={`PGS · SRG · BIT · STR · ${fmtDate(data.warehouseComparison.find((row) => row.asOf)?.asOf ?? data.context.asOf)}`} description="Skor dan tanggalnya sama untuk semua. Tanda ⚠ berarti datanya tidak lengkap, jadi peringkatnya belum setara." />
         <div className="comparison-layout">
           <WarehouseComparisonChart rows={data.warehouseComparison} />
           {/* The not-comparable marker is a disclosure, so it carries a text
@@ -379,13 +388,15 @@ const floorStateLabel: Record<FloorStation["state"], string> = {
 };
 
 const floorStageIcon: Record<FloorStation["stage"], typeof Boxes> = {
+  Perencanaan: CalendarDays,
   Inbound: ScanLine,
   Inventory: Boxes,
   Outbound: Footprints,
   Dispatch: TrendingUp,
+  Mutu: ShieldAlert,
 };
 
-const floorStages: Array<"Semua" | FloorStation["stage"]> = ["Semua", "Inbound", "Inventory", "Outbound", "Dispatch"];
+const floorStages: Array<"Semua" | FloorStation["stage"]> = ["Semua", "Perencanaan", "Inbound", "Inventory", "Outbound", "Dispatch", "Mutu"];
 
 function fmtSignal(signal: FloorSignal): string {
   if (signal.value === null) return "—";
@@ -413,7 +424,7 @@ function FloorSignalRow({ signal }: { signal: FloorSignal }) {
             decimal conventions in one line. */}
         {signal.target === null ? <em>konteks</em> : <em>ambang {signal.target.toLocaleString("id-ID", { maximumFractionDigits: 2 })}{signal.unit === "percent" ? "%" : ""}</em>}
         <span className={`status-pill status-pill--${signal.severity === "good" ? "good" : signal.severity}`}>
-          {signal.severity === "good" ? "Sesuai" : signal.severity === "watch" ? "Waspada" : signal.severity === "critical" ? "Breach" : "Konteks"}
+          {signal.severity === "good" ? "Sesuai" : signal.severity === "watch" ? "Waspada" : signal.severity === "critical" ? "Lewat ambang" : "Konteks"}
         </span>
         <i className="floor-signal__coverage" aria-hidden="true"><i style={{ width: `${coverage}%` }} /></i>
         <small>{coverage}%</small>
@@ -531,8 +542,8 @@ function FloorOperations({ data }: { data: AnalysisPayload }) {
     <>
       <PageIntro
         eyebrow="Lantai operasi"
-        title="Dua belas titik antara truk vendor dan hub"
-        description="Setiap stasiun membawa angka yang terukur, protokol WMS-nya, dan hal yang harus dilihat langsung di lantai. Stasiun tanpa data ditandai tidak terukur—bukan aman."
+        title="Setiap titik kerja, dari truk vendor sampai hub"
+        description="Angkanya, langkah WMS-nya, dan yang harus dilihat langsung di lantai. Stasiun tanpa data ditandai tidak terukur—bukan aman."
         meta={`${briefing.measuredStations}/${briefing.totalStations} stasiun terukur · ${fmtDate(data.context.rangeStart)} — ${fmtDate(data.context.rangeEnd)}`}
       />
 
@@ -602,7 +613,7 @@ function FlowIntelligence({ data }: { data: AnalysisPayload }) {
   const [mode, setMode] = useState<"inbound" | "outbound">("outbound");
   return (
     <>
-      <PageIntro eyebrow="Alur volume" title="Dari rencana sampai diterima" description="Bandingkan forecast, aktual, cancel, RTS, hub, manpower, dan kapasitas." meta={`${periodLabels[data.context.period]} · ${fmtDate(data.context.rangeStart)} — ${fmtDate(data.context.rangeEnd)}`} />
+      <PageIntro eyebrow="Alur volume" title="Dari rencana sampai diterima" description="Bandingkan rencana, aktual, pembatalan, siap kirim, hub, orang, dan kapasitas." meta={`${periodLabels[data.context.period]} · ${fmtDate(data.context.rangeStart)} — ${fmtDate(data.context.rangeEnd)}`} />
       <section className="panel chart-panel">
         <SectionHeader eyebrow={`${data.volumeFlow.length} hari`} title={mode === "outbound" ? "Forecast → request → RTS → hub" : "Forecast → aktual inbound"} description="Aktual menjadi dasar produktivitas; forecast menjadi acuan rencana." action={<div className="segmented-control"><button className={mode === "inbound" ? "active" : ""} onClick={() => setMode("inbound")}>Inbound</button><button className={mode === "outbound" ? "active" : ""} onClick={() => setMode("outbound")}>Outbound</button></div>} />
         <VolumeFlowChart points={data.volumeFlow} mode={mode} />
@@ -610,19 +621,41 @@ function FlowIntelligence({ data }: { data: AnalysisPayload }) {
 
       <section className="split-grid split-grid--wide-left">
         <div className="panel chart-panel">
-          <SectionHeader eyebrow="Loss volume" title="Di mana volume berkurang" description="Pisahkan loss dari demand, cancel, eksekusi WH, dan penerimaan hub." />
+          <SectionHeader eyebrow="Kebocoran" title="Di mana volume berkurang" description="Pisahkan yang dibatalkan, yang gagal dikerjakan, dan yang hilang setelah keluar gudang." />
           <FulfillmentFunnelChart stages={data.fulfillmentFunnel} />
-          <div className="funnel-stage-strip">{data.fulfillmentFunnel.slice(1).map((stage) => <div key={stage.key}><span>{stage.label}</span><strong>{stage.conversionPct === null ? "—" : `${stage.conversionPct.toFixed(2)}%`}</strong><small>{stage.lossQty === null ? "Tidak ada pembanding" : `${stage.lossQty.toLocaleString("id-ID")} unit hilang`}</small></div>)}</div>
+          {/* Cumulative yield, not just step conversion: every step can look
+              acceptable on its own while the chain end-to-end does not. */}
+          <div className="yield-strip">
+            {data.statistics.yieldChain.slice(1).map((stage) => (
+              <div key={stage.key}>
+                <span>{stage.label}</span>
+                <strong>{stage.cumulativeYieldPct === null ? "—" : `${stage.cumulativeYieldPct.toLocaleString("id-ID", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`}</strong>
+                <small>{stage.lossQty === null ? "Tanpa pembanding" : `${stage.lossQty.toLocaleString("id-ID")} unit hilang${stage.lossSharePct === null || stage.lossQty === 0 ? "" : ` · ${stage.lossSharePct.toLocaleString("id-ID", { maximumFractionDigits: 0 })}% dari total bocor`}`}</small>
+              </div>
+            ))}
+          </div>
         </div>
         <div className="panel decision-sidebar">
-          <SectionHeader eyebrow="Prioritas" title="Tindak kendala utama" />
+          <SectionHeader eyebrow="Prioritas" title="Kendala utama" />
           {data.decisionInsights.filter((item) => ["Planning", "Outbound", "Labor economics"].includes(item.domain)).slice(0, 3).map((item) => <article key={item.id}><span>{item.domain}</span><strong>{item.title}</strong><p>{item.recommendedAction}</p></article>)}
-          {!data.decisionInsights.some((item) => ["Planning", "Outbound", "Labor economics"].includes(item.domain)) && <div className="empty-state"><CheckCircle2 size={18} /><p>Tidak ada flow breach besar pada cut aktif. Pertahankan guardrail dan pantau perubahan harian.</p></div>}
+          {!data.decisionInsights.some((item) => ["Planning", "Outbound", "Labor economics"].includes(item.domain)) && <div className="empty-state"><CheckCircle2 size={18} /><p>Tidak ada kebocoran besar pada rentang ini. Jaga ambangnya dan pantau perubahan harian.</p></div>}
+        </div>
+      </section>
+
+      <section className="section-block">
+        <SectionHeader eyebrow="Batas kendali" title="Hari aneh, atau memang begitu prosesnya?" description="Di dalam pita = naik-turun biasa. Di luar pita = ada penyebab khusus hari itu." />
+        <div className="control-chart-grid">
+          {data.statistics.controlCharts.map((chart) => (
+            <div className={`panel chart-panel control-chart control-chart--${chart.state}`} key={chart.key}>
+              <header><strong>{chart.label}</strong><span className={`status-pill status-pill--${chart.state === "stable" ? "good" : chart.state === "shifted" ? "watch" : "critical"}`}>{chart.state === "stable" ? "Stabil" : chart.state === "shifted" ? "Bergeser" : chart.state === "special_cause" ? "Penyebab khusus" : "Data kurang"}</span></header>
+              {chart.state === "insufficient" ? <div className="empty-state"><Info size={17} /><p>{chart.finding}</p></div> : <><ControlChartView chart={chart} /><p className="control-chart__finding">{chart.finding}</p></>}
+            </div>
+          ))}
         </div>
       </section>
 
       <section className="panel chart-panel">
-        <SectionHeader eyebrow="Manpower" title="Pemakaian MD dan produktivitas" description="Keduanya memakai skala 100%. MD di bawah budget hanya efisien jika service tetap aman." />
+        <SectionHeader eyebrow="Orang" title="Pemakaian manday dan hasilnya" description="Keduanya berskala 100%. Manday di bawah budget hanya hemat kalau layanan tetap aman." />
         <LaborBalanceChart points={data.laborBalance} />
       </section>
 
@@ -713,15 +746,15 @@ function RelationshipLab({ data }: { data: AnalysisPayload }) {
       </section>
 
       <section className="section-block">
-        <SectionHeader eyebrow="Masalah berulang" title="Pain point yang tetap muncul" description="Breach KPI dan catatan Sheet digabung dengan sumber dan skor dampaknya." />
+        <SectionHeader eyebrow="Masalah berulang" title="Masalah yang terus kembali" description="Angka yang lewat ambang digabung dengan catatan lapangan di Sheet." />
         <div className="diagnostic-grid">
-          {data.painPoints.length ? data.painPoints.map((pain, index) => <article className="diagnostic-card" key={pain.id}><div className="diagnostic-card__index">0{index + 1}</div><div className="diagnostic-card__body"><div className="tag-row"><span>{pain.domain}</span><span>{pain.recurrenceWeeks}/8 minggu</span><span>bukti {pain.source}</span><span>dampak {pain.impactScore}</span></div><h3>{pain.title}</h3><p>{pain.hypothesis}</p><div className="evidence-box"><strong>Bukti terukur</strong>{pain.evidence.map((item) => <span key={item}>{item}</span>)}</div></div></article>) : <div className="panel empty-state"><Info size={20} /><p>Belum ada breach berulang yang melewati ambang.</p></div>}
+          {data.painPoints.length ? data.painPoints.map((pain, index) => <article className="diagnostic-card" key={pain.id}><div className="diagnostic-card__index">0{index + 1}</div><div className="diagnostic-card__body"><div className="tag-row"><span>{pain.domain}</span><span>{pain.recurrenceWeeks}/8 minggu</span><span>bukti {pain.source}</span><span>dampak {pain.impactScore}</span></div><h3>{pain.title}</h3><p>{pain.hypothesis}</p><div className="evidence-box"><strong>Bukti terukur</strong>{pain.evidence.map((item) => <span key={item}>{item}</span>)}</div></div></article>) : <div className="panel empty-state"><Info size={20} /><p>Belum ada masalah berulang yang melewati ambang.</p></div>}
         </div>
       </section>
 
       <section className="panel">
-        <SectionHeader eyebrow="Guardrail" title="Tarik-menarik yang wajib dijaga" />
-        <div className="guardrail-grid"><div><strong>Volume ↓, MP tetap</strong><span>Productivity dapat turun tanpa process failure.</span></div><div><strong>MP ↑</strong><span>SLA seharusnya membaik; output per manday dapat terdilusi.</span></div><div><strong>Actual MD &lt; budget</strong><span>Saving valid hanya bila SLA dan productivity sehat.</span></div><div><strong>Cancel ↑</strong><span>Harus dibuktikan dengan capacity, remaining hours, dan run-rate.</span></div><div><strong>DCC ↓</strong><span>Telusuri SLOC, replenish, troubleshoot, Pick-to-PF, lalu picker.</span></div><div><strong>Capacity ≥ 92%</strong><span>Tambahan volume atau MP berisiko congestion dan queue.</span></div></div>
+        <SectionHeader eyebrow="Ambang" title="Tarik-menarik yang wajib dijaga" />
+        <div className="guardrail-grid"><div><strong>Volume ↓, MP tetap</strong><span>Produktivitas bisa turun tanpa ada yang salah di proses.</span></div><div><strong>MP ↑</strong><span>SLA membaik, tapi hasil per orang bisa ikut turun.</span></div><div><strong>Actual MD &lt; budget</strong><span>Hemat hanya sah kalau SLA dan produktivitas ikut sehat.</span></div><div><strong>Cancel ↑</strong><span>Harus dibuktikan dengan sisa kapasitas, sisa jam, dan laju kerja.</span></div><div><strong>DCC ↓</strong><span>Telusuri SLOC, replenish, troubleshoot, Pick-to-PF, lalu picker.</span></div><div><strong>Capacity ≥ 92%</strong><span>Tambah volume atau orang berisiko membuat macet.</span></div></div>
       </section>
     </>
   );
@@ -734,13 +767,13 @@ function ScenarioStudio({ data }: { data: AnalysisPayload }) {
   const result = runSimulation(baseline, inputs);
   const controls: Array<{ key: keyof SimulationInputs; label: string; hint: string; min: number; max: number }> = [
     { key: "forecastChange", label: "Volume aktual", hint: "Perubahan workload yang masuk", min: -30, max: 35 },
-    { key: "attendanceChange", label: "Kehadiran / mandays", hint: "Perubahan manpower tersedia", min: -20, max: 20 },
+    { key: "attendanceChange", label: "Kehadiran / mandays", hint: "Perubahan jumlah orang yang tersedia", min: -20, max: 20 },
     { key: "cancelChange", label: "Perubahan cancel", hint: "Negatif berarti cancel turun", min: -10, max: 10 },
     { key: "processGain", label: "Perbaikan proses", hint: "Dampak pickface, travel, rework, atau sistem", min: 0, max: 20 },
   ];
   return (
     <>
-      <PageIntro eyebrow="Simulasi" title="Uji keputusan sebelum diterapkan" description="Lihat arah dampak volume, manpower, cancel, proses, SLA, dan kapasitas." meta={`${data.context.warehouse} · ${periodLabels[data.context.period]}`} />
+      <PageIntro eyebrow="Simulasi" title="Uji keputusan sebelum diterapkan" description="Lihat arah dampaknya sebelum diputuskan di lapangan." meta={`${data.context.warehouse} · ${periodLabels[data.context.period]}`} />
       <section className="simulation-layout">
         <div className="panel controls-panel">
           <div className="simulation-baseline"><SlidersHorizontal size={18} /><div><strong>Baseline {data.context.warehouse}</strong><span>Cut-off {fmtDate(data.context.asOf)}</span></div></div>
@@ -754,30 +787,62 @@ function ScenarioStudio({ data }: { data: AnalysisPayload }) {
         </div>
       </section>
       <section className="baseline-grid"><div><span>Produktivitas</span><strong>{baseline.productivityAttainment.toFixed(1)}%</strong></div><div><span>SLA inbound</span><strong>{baseline.sla.toFixed(1)}%</strong></div><div><span>Demand fill</span><strong>{baseline.demandFill.toFixed(1)}%</strong></div><div><span>Kapasitas puncak</span><strong>{baseline.utilization.toFixed(1)}%</strong></div><div><span>Gap mandays</span><strong>{fmtSigned(baseline.mandaysGap)}</strong></div></section>
-      <section className="panel assumption-panel"><Target size={19} /><div><strong>Batas model</strong><p>Volume, manpower, proses, dan kapasitas saling tarik-menarik. Hasil ini dipakai untuk memilih pilot, bukan forecast finansial.</p></div></section>
+      <section className="panel assumption-panel"><Target size={19} /><div><strong>Batas model</strong><p>Volume, orang, proses, dan kapasitas saling tarik-menarik. Hasil ini untuk memilih uji coba, bukan ramalan angka.</p></div></section>
     </>
   );
 }
 
-function InitiativePortfolio({ data }: { data: AnalysisPayload }) {
+function InitiativePortfolio({ data, openFloor }: { data: AnalysisPayload; openFloor: () => void }) {
+  const stationTitle = (id: string) => data.floorStations.find((station) => station.id === id)?.title ?? id;
+  const manpower = data.statistics.manpower.filter((item) => item.requiredMandays !== null);
   return (
     <>
-      <PageIntro eyebrow="Rencana aksi" title="Ubah pain point menjadi uji terukur" description="Setiap aksi punya owner, bukti, target, guardrail, dan stop-loss." meta={`${data.initiatives.length} aksi · ${data.context.warehouse}`} />
+      <PageIntro eyebrow="Rencana aksi" title="Dari masalah berulang ke uji yang terukur" description="Tiap aksi punya pemilik, tempat mengerjakannya, ukuran hasilnya, dan syarat berhenti." meta={`${data.initiatives.length} aksi · ${data.context.warehouse}`} />
       <section className="portfolio-overview">
-        <div className="panel chart-panel"><SectionHeader eyebrow="Urutan prioritas" title="Kerjakan yang paling bernilai" description="Bar menunjukkan skor prioritas. Garis 65 adalah ambang mulai." /><InitiativePriorityChart initiatives={data.initiatives} /></div>
+        <div className="panel chart-panel"><SectionHeader eyebrow="Urutan" title="Kerjakan yang paling bernilai dulu" description="Garis 65 adalah ambang mulai." /><InitiativePriorityChart initiatives={data.initiatives} /></div>
         <div className="portfolio-summary">
-          <article><Users size={17} /><span>Owner utama</span><strong>{new Set(data.initiatives.map((item) => item.owner)).size}</strong></article>
+          <article><Users size={17} /><span>Pemilik</span><strong>{new Set(data.initiatives.map((item) => item.owner)).size}</strong></article>
           <article><Target size={17} /><span>Keyakinan tinggi</span><strong>{data.initiatives.filter((item) => item.confidence === "high").length}</strong></article>
-          <article><CalendarDays size={17} /><span>Target tercepat</span><strong>{Math.min(...data.initiatives.map((item) => item.horizonDays))}h</strong></article>
+          <article><CalendarDays size={17} /><span>Tercepat</span><strong>{Math.min(...data.initiatives.map((item) => item.horizonDays))}h</strong></article>
           <article><Sparkles size={17} /><span>Prioritas tertinggi</span><strong>{Math.max(...data.initiatives.map((item) => item.priorityScore))}</strong></article>
         </div>
       </section>
+
+      {manpower.length > 0 && (
+        <section className="panel">
+          <SectionHeader eyebrow="Orang" title="Beban kemarin butuh berapa orang" description="Kebutuhan = volume ÷ target produktivitas dari sumber. Bukan standar baru." />
+          <div className="manpower-grid">
+            {manpower.map((item) => (
+              <article className={`manpower-card manpower-card--${item.verdict}`} key={item.key}>
+                <header><span>{item.role}</span><b>{item.verdict === "short" ? "Kurang" : item.verdict === "surplus" ? "Lebih" : "Pas"}</b></header>
+                <div className="manpower-card__pair">
+                  <div><small>Butuh</small><strong>{fmtNumber(item.requiredMandays, 1)}</strong></div>
+                  <div><small>Hadir</small><strong>{fmtNumber(item.actualMandays, 1)}</strong></div>
+                  <div><small>Budget</small><strong>{fmtNumber(item.budgetMandays, 1)}</strong></div>
+                </div>
+                <p>{item.gapMandays === null ? "Selisih belum terbaca." : `Selisih ${item.gapMandays > 0 ? "+" : ""}${fmtNumber(item.gapMandays, 1)} MD terhadap kehadiran.`}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
       <section className="initiative-grid">
         {data.initiatives.map((initiative, index) => (
           <article className="initiative-card" key={initiative.id}>
             <header><span className="initiative-number">0{index + 1}</span><div><div className="tag-row"><span>{initiativeRoleLabel[initiative.portfolioRole]}</span><span>{initiativeTypeLabel[initiative.type]}</span><span>keyakinan {confidenceLabel[initiative.confidence]}</span><span>prioritas {initiative.priorityScore}</span></div><h3>{initiative.title}</h3><div className="initiative-meta"><span><Users size={13} />{initiative.owner}</span><span><BarChart3 size={13} />usaha {initiative.effort}</span><span><CalendarDays size={13} />{initiative.horizonDays} hari</span></div></div></header>
             <div className="initiative-adaptive"><div><span>Mengapa sekarang</span><strong>{initiative.whyNow}</strong></div><div><span>Mulai bila</span><strong>{initiative.trigger}</strong></div></div>
+            {initiative.quantified.length > 0 && (
+              <div className="initiative-prize">
+                {initiative.quantified.map((item) => <div key={item.label}><span>{item.label}</span><strong>{item.value}</strong><small>{item.note}</small></div>)}
+              </div>
+            )}
             <div className="initiative-section initiative-section--impact"><span>Tindakan</span><p>{initiative.intervention}</p></div>
+            {initiative.linkedStationIds.length > 0 && (
+              <div className="initiative-stations">
+                <span>Dikerjakan di</span>
+                {initiative.linkedStationIds.map((id) => <button type="button" key={id} onClick={openFloor}>{stationTitle(id)}<ChevronRight size={13} /></button>)}
+              </div>
+            )}
             <div className="initiative-decision-gates"><div><span>Berhasil bila</span><strong>{initiative.successGate}</strong></div><div><span>Hentikan bila</span><strong>{initiative.stopLoss}</strong></div><div className="priority-breakdown"><span>Dasar prioritas</span><p><b>{initiative.priorityBreakdown.impact}</b> dampak · <b>{initiative.priorityBreakdown.recurrence}</b> berulang · <b>{initiative.priorityBreakdown.evidence}</b> bukti · <b>{initiative.priorityBreakdown.feasibility}</b> kelayakan</p></div></div>
             <details className="initiative-details"><summary>Detail uji dan 14 hari pertama <ChevronDown size={15} /></summary><div>
               <div className="initiative-experiment"><div><span>Pertanyaan keputusan</span><strong>{initiative.decisionQuestion}</strong></div><div><span>Hipotesis gugur bila</span><p>{initiative.counterfactual}</p></div><div><span>Indikator awal</span><p>{initiative.leadingIndicators.join(" · ")}</p></div></div>
@@ -788,6 +853,81 @@ function InitiativePortfolio({ data }: { data: AnalysisPayload }) {
           </article>
         ))}
       </section>
+    </>
+  );
+}
+
+/** The five questions a single percentage cannot answer, answered from the
+ *  active window. Placed on the cockpit because they are the sharpest thing the
+ *  engine knows, not because they are statistics. */
+function StatisticsReadout({ data, compact = false }: { data: AnalysisPayload; compact?: boolean }) {
+  const readouts = compact ? data.statistics.readouts.slice(0, 3) : data.statistics.readouts;
+  return (
+    <div className="readout-grid">
+      {readouts.map((item) => (
+        <article className="readout" key={item.id}>
+          <h3>{item.question}</h3>
+          <p>{item.answer}</p>
+          <details><summary>Cara menghitungnya <ChevronDown size={13} /></summary><p>{item.method}</p>{item.caveat && <p className="readout__caveat"><AlertTriangle size={12} />{item.caveat}</p>}</details>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function KnowledgeBase({ data }: { data: AnalysisPayload }) {
+  const [group, setGroup] = useState<"Proses" | "Rumus" | "Aturan">("Proses");
+  const [query, setQuery] = useState("");
+  const articles = useMemo(() => data.knowledgeBase.filter((item) => {
+    const matchesGroup = item.group === group;
+    const haystack = `${item.domain} ${item.title} ${item.summary} ${item.body.join(" ")} ${item.formula ?? ""} ${item.basis ?? ""}`.toLowerCase();
+    return matchesGroup && haystack.includes(query.toLowerCase());
+  }), [data.knowledgeBase, group, query]);
+  const domains = [...new Set(articles.map((item) => item.domain))];
+  const groupHint: Record<typeof group, string> = {
+    Proses: "Cara kerjanya dijalankan. Termasuk langkah yang belum terukur di sheet.",
+    Rumus: "Setiap angka yang dihitung sistem ini, ditulis apa adanya.",
+    Aturan: "Apa yang boleh dan tidak boleh disimpulkan dari sebuah angka.",
+  };
+  return (
+    <>
+      <PageIntro
+        eyebrow="Pengetahuan"
+        title="Cara kerja, rumus, dan aturan bacanya"
+        description="Isi kepala tim operasi yang ditulis. Dibaca sambil berdiri, bukan sambil duduk."
+        meta={`${data.knowledgeBase.length} catatan`}
+      />
+
+      <section className="panel">
+        <SectionHeader eyebrow="Angka hari ini" title="Lima pertanyaan yang tidak bisa dijawab satu persen" description="Dihitung dari rentang yang sedang dibuka." />
+        <StatisticsReadout data={data} />
+      </section>
+
+      <div className="knowledge-toolbar">
+        <div className="segmented-control" aria-label="Pilih jenis catatan">
+          {(["Proses", "Rumus", "Aturan"] as const).map((item) => <button type="button" key={item} className={group === item ? "active" : ""} onClick={() => setGroup(item)}>{item}</button>)}
+        </div>
+        <div className="search-box"><Search size={17} /><input aria-label="Cari catatan" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari proses, rumus, atau aturan" /><span>{articles.length}</span></div>
+      </div>
+      <p className="knowledge-hint">{groupHint[group]}</p>
+
+      {domains.map((domain) => (
+        <section className="knowledge-domain" key={domain}>
+          <h2>{domain}</h2>
+          <div className="knowledge-grid">
+            {articles.filter((item) => item.domain === domain).map((item) => (
+              <article className={`knowledge-card knowledge-card--${item.group.toLowerCase()}`} key={item.id}>
+                <h3>{item.title}</h3>
+                <p className="knowledge-card__summary">{item.summary}</p>
+                {item.formula && <code className="knowledge-formula">{item.formula}</code>}
+                <ul>{item.body.map((line) => <li key={line}>{line}</li>)}</ul>
+                {item.basis && <footer><Info size={13} /><span>{item.basis}</span></footer>}
+              </article>
+            ))}
+          </div>
+        </section>
+      ))}
+      {!articles.length && <div className="panel empty-state"><Info size={18} /><p>Tidak ada catatan yang cocok.</p></div>}
     </>
   );
 }
@@ -827,14 +967,14 @@ function MetricRegistry({ data }: { data: AnalysisPayload }) {
       <section className={`sync-detail sync-detail--${data.context.sync.state}`}><Activity size={17} /><div><strong>{data.context.sync.message}</strong><p>{data.context.sync.rangesLoaded ? `${data.context.sync.rangesLoaded} rentang` : "Rentang tidak tercatat"} · {data.context.sync.cellsLoaded.toLocaleString("id-ID")} sel · {data.context.sync.latencyMs === null ? "durasi tidak tersedia" : `${data.context.sync.latencyMs.toLocaleString("id-ID")} ms`} · jeda operasi {data.context.operationalLagDays} hari.</p></div></section>
       {data.health.dataWarnings.length > 0 && <section className="warning-panel"><AlertTriangle size={20} /><div><strong>Guardrail kualitas aktif</strong>{data.health.dataWarnings.map((warning) => <p key={warning}>{warning}</p>)}</div></section>}
       <section className="section-block context-gap-section">
-        <SectionHeader eyebrow="Gap keputusan" title="Data yang paling perlu dilengkapi" description="Diurutkan dari dampak terbesar pada manpower, service, kapasitas, quality, dan biaya." />
+        <SectionHeader eyebrow="Gap keputusan" title="Data yang paling perlu dilengkapi" description="Diurutkan dari yang paling menghambat keputusan." />
         <div className="context-gap-grid">
           {data.contextGaps.map((gap, index) => <article className={`context-gap-card context-gap-card--${gap.priority}`} key={gap.id}><header><span>0{index + 1} · {gap.domain}</span><b>{gap.priority}</b></header><h3>{gap.title}</h3><p>{gap.whyItMatters}</p><div><strong>Konteks yang sudah terbaca</strong>{gap.observedContext.map((item) => <span key={item}>{item}</span>)}</div><details><summary>Bukti yang perlu ditambahkan</summary><p>{gap.requiredEvidence.join(" · ")}</p></details><footer><span>{gap.owner}</span><strong>{gap.decisionUnlocked}</strong></footer></article>)}
           {!data.contextGaps.length && <div className="panel empty-state"><CheckCircle2 size={18} /><p>Tidak ada gap material pada rentang aktif.</p></div>}
         </div>
       </section>
       <section className="section-block operating-contract">
-        <SectionHeader eyebrow="Aturan analisis" title="Cara KPI dibaca bersama" description="Satu KPI tidak boleh membaik dengan mengorbankan service, quality, kapasitas, atau biaya." />
+        <SectionHeader eyebrow="Aturan analisis" title="Cara KPI dibaca bersama" description="Satu angka tidak boleh membaik dengan mengorbankan angka lain." />
         <div className="operating-rule-grid">{data.intelligence.operatingRules.map((rule, index) => <details key={rule.id} open={index < 2}><summary><span>0{index + 1}</span><strong>{rule.title}</strong><ChevronDown size={15} /></summary><p>{rule.principle}</p><div><Target size={14} /><span>{rule.decisionGuardrail}</span></div></details>)}</div>
       </section>
       </>}
@@ -1047,12 +1187,13 @@ export function DashboardShell() {
 
           <div id="workspace-content" className="workspace-content" ref={workspaceRef} tabIndex={-1} aria-live="polite" aria-label={nav.find((item) => item.id === view)?.label}>
           {error ? <section className="source-error"><AlertTriangle size={24} /><div><h2>Data belum dapat dibaca</h2><p>{error}</p><button onClick={() => void refresh()}><RefreshCw size={15} />Coba lagi</button></div></section> : loading && !data ? <Skeleton /> : data ? <>
-            {view === "overview" && <ExecutiveCockpit data={data} openInitiatives={() => selectView("initiatives")} openFloor={() => selectView("floor")} />}
+            {view === "overview" && <ExecutiveCockpit data={data} openInitiatives={() => selectView("initiatives")} openFloor={() => selectView("floor")} openKnowledge={() => selectView("knowledge")} />}
             {view === "floor" && <FloorOperations key={data.context.warehouse} data={data} />}
             {view === "flow" && <FlowIntelligence data={data} />}
             {view === "relationships" && <RelationshipLab data={data} />}
             {view === "simulation" && <ScenarioStudio data={data} />}
-            {view === "initiatives" && <InitiativePortfolio data={data} />}
+            {view === "initiatives" && <InitiativePortfolio data={data} openFloor={() => selectView("floor")} />}
+            {view === "knowledge" && <KnowledgeBase data={data} />}
             {view === "data" && <MetricRegistry data={data} />}
           </> : <Skeleton />}
           </div>
