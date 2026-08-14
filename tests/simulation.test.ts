@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { runSimulation } from "@/lib/analysis/simulation";
 import type { SimulationBaselineInput, SimulationInputs } from "@/lib/types";
 
-const NONE: SimulationInputs = { demandChange: 0, cancelChange: 0, processGain: 0, pickerMandaysChange: 0, packerMandaysChange: 0, loaderMandaysChange: 0 };
+const NONE: SimulationInputs = { demandChange: 0, cancelChange: 0, processGain: 0, pickerMandaysChange: 0, packerMandaysChange: 0, loaderMandaysChange: 0, peakDay: false };
 
 /** 100k demand, 10% cancelled, 90k of the 90k remaining actually shipped.
  *  Picker is the tightest role at 100k throughput; loader has the most slack. */
@@ -12,6 +12,12 @@ function baseline(overrides: Partial<SimulationBaselineInput> = {}): SimulationB
     cancelPct: 10,
     served: 88_200,
     outboundCapacity: 200_000,
+    windowDays: 7,
+    peakDayIndex: 120,
+    peakDayLabel: "Minggu",
+    inboundVolume: 95_000,
+    putawayCompletionPct: 99,
+    pickToPfPct: 88,
     roles: [
       { key: "picker", role: "Picker", mandays: 50, targetRate: 2_000, actualRate: 2_000 },
       { key: "packer", role: "Packer", mandays: 40, targetRate: 3_000, actualRate: 3_000 },

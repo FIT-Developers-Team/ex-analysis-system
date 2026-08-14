@@ -1351,6 +1351,40 @@ button { cursor: pointer; }
 .floor-unmeasured em { padding: 3px 8px; border: 1px dashed var(--line-strong); border-radius: 20px; color: var(--muted); font-size: var(--fs-micro); font-style: normal; }
 
 /* ==========================================================================
+   Meeting spine: numbered steps and long-window patterns
+   ========================================================================== */
+
+.step-header { display: flex; align-items: flex-start; gap: var(--sp-4); margin: var(--sp-7) 0 var(--sp-4); padding-top: var(--sp-4); border-top: 2px solid var(--line); }
+.step-header:first-child { margin-top: var(--sp-4); }
+.step-header__num { display: grid; place-items: center; width: 34px; height: 34px; flex: none; border-radius: 50%; background: var(--ink); color: #fff; font-size: var(--fs-sm); font-weight: 750; font-variant-numeric: tabular-nums; }
+.step-header h2 { margin: 0; font-size: var(--fs-xl); line-height: var(--lh-tight); letter-spacing: -.025em; }
+.step-header p { max-width: 80ch; margin: 5px 0 0; color: var(--muted); font-size: var(--fs-sm); line-height: var(--lh-snug); }
+.step-action { display: flex; justify-content: flex-end; margin-bottom: var(--sp-3); }
+
+.pattern-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); }
+.pattern-card { min-width: 0; display: flex; flex-direction: column; padding: var(--sp-5); border: 1px solid var(--line); border-top: 3px solid var(--line-strong); border-radius: var(--r-xl); background: var(--paper); box-shadow: var(--shadow); }
+.pattern-card--wide { grid-column: 1 / -1; }
+.pattern-card--critical { border-top-color: var(--orange); }
+.pattern-card--watch { border-top-color: var(--gold); }
+.pattern-card > header { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); }
+.pattern-card > header b { color: var(--faint); font-size: var(--fs-micro); font-weight: 650; }
+.pattern-card h3 { margin: 6px 0 8px; font-size: var(--fs-lg); line-height: var(--lh-tight); letter-spacing: -.015em; }
+.pattern-card > p { max-width: 92ch; margin: 0; color: var(--muted); font-size: var(--fs-sm); line-height: var(--lh-body); }
+.pattern-card > footer { display: flex; align-items: flex-start; gap: 8px; margin-top: auto; padding-top: var(--sp-4); color: var(--ink-2); font-size: var(--fs-sm); line-height: var(--lh-snug); }
+.pattern-card > footer svg { flex: none; margin-top: 3px; color: var(--blue); }
+
+.pattern-bands { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; margin: var(--sp-3) 0; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--line); overflow: hidden; }
+.pattern-bands div { padding: 10px var(--sp-3); background: var(--sunken); }
+.pattern-bands span { display: block; color: var(--muted); font-size: var(--fs-micro); }
+.pattern-bands strong { display: block; margin-top: 3px; font-size: var(--fs-xl); font-variant-numeric: tabular-nums; }
+
+.pattern-effects { margin-top: var(--sp-3); padding-top: var(--sp-3); border-top: 1px solid var(--line-soft); }
+.pattern-effect { display: flex; align-items: flex-start; gap: 7px; margin: 0 0 7px; color: var(--muted); font-size: var(--fs-xs); line-height: var(--lh-snug); }
+.pattern-effect svg { flex: none; margin-top: 2px; }
+.pattern-effect--stalled svg, .pattern-effect--unclear svg { color: var(--gold-ink); }
+.pattern-effect--delivered svg { color: var(--teal); }
+
+/* ==========================================================================
    Incentive conflicts (BSC vs Non-BSC)
    ========================================================================== */
 
@@ -1396,6 +1430,21 @@ button { cursor: pointer; }
 .scenario-verdict__figures small { color: var(--faint); font-size: var(--fs-micro); }
 
 .scenario-right { display: grid; gap: var(--sp-3); min-width: 0; }
+
+.scenario-toggle { display: flex; align-items: flex-start; gap: 10px; margin-top: var(--sp-2); padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--sunken); cursor: pointer; }
+.scenario-toggle input { width: 18px; height: 18px; flex: none; margin-top: 1px; accent-color: var(--blue); }
+.scenario-toggle strong { display: block; font-size: var(--fs-sm); }
+.scenario-toggle span { display: block; margin-top: 3px; color: var(--muted); font-size: var(--fs-micro); line-height: var(--lh-snug); }
+
+.impact-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: var(--sp-3); }
+.impact-card { min-width: 0; padding: var(--sp-4); border: 1px solid var(--line); border-left: 3px solid var(--line-strong); border-radius: var(--r-lg); background: var(--paper); box-shadow: var(--shadow); }
+.impact-card--critical { border-left-color: var(--orange); }
+.impact-card--watch { border-left-color: var(--gold); }
+.impact-card--good { border-left-color: var(--teal); }
+.impact-card header { display: grid; gap: 4px; margin-bottom: 8px; }
+.impact-card header span { color: var(--blue); font-size: var(--fs-micro); font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.impact-card header b { color: var(--ink); font-size: var(--fs-md); letter-spacing: -.01em; }
+.impact-card p { margin: 0; color: var(--muted); font-size: var(--fs-xs); line-height: var(--lh-body); }
 .scenario-assumptions p { margin: 6px 0 0; }
 
 .scenario-table { display: grid; border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; }
@@ -1553,6 +1602,7 @@ button { cursor: pointer; }
   .context-gap-grid { grid-template-columns: 1fr; }
   .control-chart-grid { grid-template-columns: 1fr; }
   .knowledge-grid { grid-template-columns: 1fr; }
+  .pattern-grid { grid-template-columns: 1fr; }
   .incentive-grid { grid-template-columns: 1fr; }
   .scenario-verdict { grid-template-columns: 1fr; }
   .scenario-verdict__figures { grid-auto-flow: row; grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -1790,6 +1840,11 @@ button { cursor: pointer; }
   .knowledge-toolbar .search-box { width: 100%; max-width: none; }
   .knowledge-card { padding-inline: var(--sp-4); }
   .incentive-card { padding-inline: var(--sp-4); }
+  .pattern-card { padding: var(--sp-4); }
+  .pattern-bands { grid-template-columns: 1fr; }
+  .step-header { gap: var(--sp-3); margin-top: var(--sp-6); }
+  .step-header__num { width: 28px; height: 28px; font-size: var(--fs-xs); }
+  .step-header h2 { font-size: var(--fs-lg); }
   .incentive-pair { grid-template-columns: 1fr; }
   .incentive-pair > svg { transform: rotate(90deg); justify-self: start; }
   .scenario-verdict { padding: var(--sp-4); }

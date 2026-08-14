@@ -131,6 +131,20 @@ The yield chain adds cumulative yield and each step's share of total loss, so th
 
 Sigma comes from the moving range rather than the standard deviation on purpose: a genuine process shift inflates sd, widening the limits enough to hide itself.
 
+## Operating patterns
+
+Five questions only a 90-day window can answer, in `lib/analysis/operating-patterns.ts`. Each changes the recommendation rather than decorating it, and each came out of looking at the source rather than out of a framework.
+
+**Is cancellation a wall or a decision?** Cancellation is banded by demand tercile and correlated against volume. The same 9% means opposite things depending on the answer, and the four warehouses genuinely differ: SRG (r=0.71, 0.2% → 16.1%) and BIT (r=0.79, 1.5% → 29.0%) hit a capacity wall on their big days, while PGS cancels 6.3% on its quietest days and 6.4% on its busiest (r=0.13) — nothing to do with capacity. Telling PGS to add capacity would miss entirely.
+
+**Does the crew shrink when the volume does?** Measured as the slope of log mandays against log volume. Outbound roles run near-fixed crews everywhere (0.03–0.29) while inbound checkers flex (0.24–0.78). SRG's picker, packer, and loader sit at 0.07, 0.08, and −0.03: an essentially fixed crew whose attainment therefore falls from 98% on busy days to 77% on quiet ones. That gap is arithmetic, not performance, and coaching will not move it.
+
+**Which weekday is structurally different?** Sunday runs 11–17% above average and Monday 17–22% below it, with attainment tracking the same shape. One roster number for seven days is wrong twice a week.
+
+**What moved over months rather than days?** First third of the window against the last third. Location accuracy climbed from 57% to 98% at PGS over the year and device adoption from 51% to 100% — improvements the seven-day cockpit cannot see at all.
+
+**Did an improvement reach its outcome?** Both of those programmes hit their own targets while picker output per manday stayed flat. That is worth knowing before the next programme is funded, and it is reported as `stalled` rather than buried.
+
 ## Incentives: BSC and Non-BSC
 
 The glossary's `remarks` column marks 32 metrics as **BSC** — the set that carries an incentive bonus — and the rest as Non-BSC. The engine reads that classification rather than inferring it, badges it in the registry, and uses it to detect a structural problem the KPI cards cannot see.

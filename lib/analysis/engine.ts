@@ -3,6 +3,7 @@ import { buildMetricSemantic, OPERATION_GLOSSARY, OPERATING_RULES } from "@/lib/
 import { buildFloorBriefing, buildFloorStations, FLOOR_ENGINE_KEYS } from "@/lib/analysis/floor-operations";
 import { buildKnowledgeBase } from "@/lib/analysis/knowledge-base";
 import { controlChart, forecastQuality, requiredMandays, variability, wilsonInterval, yieldChain } from "@/lib/analysis/operations-math";
+import { cancellationDriver, improvementWithoutEffect, labourElasticity, longHorizonTrend, weekdayProfile, type DailyObservation } from "@/lib/analysis/operating-patterns";
 import { clamp, decayScore } from "@/lib/analysis/scoring";
 import { runSimulation } from "@/lib/analysis/simulation";
 import { PRIORITY_WAREHOUSES } from "@/lib/types";
@@ -22,6 +23,7 @@ import type {
   IntelligenceSummary,
   MetricPoint,
   MetricReading,
+  OperatingPatterns,
   OperationsStatistics,
   OperationsEconomics,
   OperatingPicture,
@@ -597,7 +599,7 @@ function buildInitiatives(
         // without the second is how a warehouse gets told to stop cancelling and
         // then simply fails the orders instead.
         const absorbable = cancel !== null && cancel > 2
-          ? Math.max(0, runSimulation(simulation, { demandChange: 0, cancelChange: -(cancel - 2), processGain: 0, pickerMandaysChange: 0, packerMandaysChange: 0, loaderMandaysChange: 0 }).scenario.served - (economics.servedQty ?? 0))
+          ? Math.max(0, runSimulation(simulation, { demandChange: 0, cancelChange: -(cancel - 2), processGain: 0, pickerMandaysChange: 0, packerMandaysChange: 0, loaderMandaysChange: 0, peakDay: false }).scenario.served - (economics.servedQty ?? 0))
           : 0;
         const shortfall = recoverable === null ? null : Math.max(0, recoverable - absorbable);
         return [
@@ -1314,6 +1316,7 @@ function decisionInsights(
   zones: CapacityZone[],
   pains: PainPoint[],
   relationships: RelationshipSignal[],
+  patterns: OperatingPatterns,
 ): DecisionInsight[] {
   const byKey = new Map(kpis.map((item) => [item.key, item]));
   const value = (key: string) => byKey.get(key)?.value ?? null;
@@ -1325,7 +1328,7 @@ function decisionInsights(
   };
   const insights: DecisionInsight[] = [];
   const add = (insight: DecisionInsight) => insights.push(insight);
-  const pct = (number: number | null) => number === null ? "n/a" : `${number.toFixed(1)}%`;
+  const pct = (number: number | null, digits = 1) => number === null ? "n/a" : `${number.toFixed(digits)}%`;
   const strongest = relationships.find((item) => item.survivesMultiplicity && !item.sharedTerm && item.alignment !== "inconclusive");
 
   const mandays = value("mandays_variance");
@@ -1460,6 +1463,97 @@ function decisionInsights(
     });
   }
 
+  /* --- Long-window patterns ------------------------------------------------
+     These read 90 days, so they answer questions the seven-day cards cannot and
+     frequently change the recommendation rather than reinforcing it. */
+
+  const cancellation = patterns.cancellation;
+  if (cancellation.available && cancelRate !== null && cancelRate > cancelTarget) {
+    add({
+      id: `cancellation-${cancellation.verdict}`,
+      priority: cancellation.verdict === "policy" ? "critical" : "high",
+      domain: "Outbound",
+      title: cancellation.verdict === "capacity"
+        ? "Pembatalan mengikuti besarnya hari, jadi ini soal kapasitas"
+        : cancellation.verdict === "policy"
+          ? "Pembatalan tidak mengikuti beban, jadi ini soal keputusan"
+          : "Pembatalan sebagian karena beban, sebagian bukan",
+      observation: cancellation.reading,
+      implication: cancellation.verdict === "capacity"
+        ? "Menyuruh berhenti membatalkan tanpa menambah kemampuan hanya memindahkan kegagalan dari 'dibatalkan' ke 'tidak terlayani'. Angkanya berpindah kolom, tokonya tetap tidak dilayani."
+        : cancellation.verdict === "policy"
+          ? "Hari sepi dibatalkan hampir sebanyak hari ramai. Kapasitas tidak menjelaskan itu, jadi penjelasannya ada pada siapa yang memutuskan dan atas dasar apa."
+          : "Dua penyebab berbeda sedang tercampur dalam satu angka, dan keduanya menuntut tindakan yang berlawanan.",
+      recommendedAction: cancellation.action,
+      evidence: [cancellation.reading, `Sepi ${pct(cancellation.lowBandPct)} · sedang ${pct(cancellation.midBandPct)} · ramai ${pct(cancellation.highBandPct)}`],
+      confidence: cancellation.sampleSize >= 60 ? "high" : "medium",
+    });
+  }
+
+  const labour = patterns.labour;
+  const fixedRoles = labour.roles.filter((role) => role.behaviour === "fixed");
+  if (labour.available && fixedRoles.length >= 2 && productivity !== null && productivity < 100) {
+    add({
+      id: "roster-shape-dilution",
+      priority: "high",
+      domain: "Personalia",
+      title: "Produktivitas rendah di hari sepi adalah bentuk roster, bukan kinerja",
+      observation: labour.reading,
+      implication: "Kru yang tidak mengecil saat volume mengecil pasti menghasilkan lebih sedikit per orang. Itu aritmetika, dan menegurnya sebagai kinerja tidak akan mengubah apa pun.",
+      recommendedAction: labour.action,
+      evidence: [
+        `Elastisitas ${fixedRoles.map((role) => `${role.role} ${role.elasticity?.toFixed(2)}`).join(", ")} (1 = ikut volume, 0 = kru tetap).`,
+        ...(labour.quietDayOvershootMandays ? [`Sekitar ${Math.round(labour.quietDayOvershootMandays).toLocaleString("id-ID")} manday hari sepi di atas kebutuhan pada laju hari ramai.`] : []),
+      ],
+      confidence: "high",
+    });
+  }
+
+  const weekday = patterns.weekday;
+  if (weekday.available && weekday.peakToTroughRatio !== null && weekday.peakToTroughRatio > 1.15) {
+    add({
+      id: "weekday-staffing-shape",
+      priority: "medium",
+      domain: "Planning",
+      title: `Beban ${weekday.busiestLabel} dan ${weekday.quietestLabel} tidak layak memakai roster yang sama`,
+      observation: `${weekday.headline}. ${weekday.reading}`,
+      implication: "Satu angka roster untuk tujuh hari salah dua kali dalam seminggu: kelebihan orang di hari sepi, kekurangan di hari puncak.",
+      recommendedAction: weekday.action,
+      evidence: weekday.cells.filter((cell) => cell.volumeIndexPct !== null).map((cell) => `${cell.label} ${pct(cell.volumeIndexPct, 0)} volume, pencapaian ${pct(cell.productivityPct, 0)}`),
+      confidence: weekday.cells.every((cell) => cell.days >= 8) ? "high" : "medium",
+    });
+  }
+
+  const stalled = patterns.effects.filter((effect) => effect.verdict === "stalled");
+  if (stalled.length) {
+    add({
+      id: "improvement-not-landing",
+      priority: "high",
+      domain: "Ops Excellence",
+      title: "Perbaikan tercapai pada ukurannya sendiri, belum terlihat di hilir",
+      observation: stalled.map((effect) => effect.reading).join(" "),
+      implication: "Program berikutnya akan diminta dengan janji yang sama. Tanpa penjelasan mengapa yang ini berhenti di tengah jalan, janji itu belum bisa dipercaya.",
+      recommendedAction: "Telusuri rantainya satu tahap: apakah perbaikan sampai ke lantai, apakah tahap berikutnya memang bergantung padanya, dan apakah ada penahan lain yang lebih dominan. Uji satu tahap, jangan menambah program baru.",
+      evidence: stalled.map((effect) => `${effect.driverLabel} ${effect.driverChange > 0 ? "+" : ""}${effect.driverChange.toFixed(0)}% vs ${effect.outcomeLabel} ${effect.outcomeChange > 0 ? "+" : ""}${effect.outcomeChange.toFixed(0)}%`),
+      confidence: "medium",
+    });
+  }
+
+  const declining = patterns.trends.filter((trend) => trend.direction === "declined" && Math.abs(trend.changePct ?? 0) >= 10);
+  if (declining.length) {
+    add({
+      id: "long-horizon-slide",
+      priority: "high",
+      domain: "Ops Excellence",
+      title: `${declining.length} ukuran memburuk perlahan sepanjang ${patterns.windowDays} hari`,
+      observation: declining.map((trend) => `${trend.label} ${pct(trend.earlyValue)} → ${pct(trend.lateValue)}`).join("; ") + ".",
+      implication: "Penurunan sepelan ini tidak pernah menembus ambang harian, jadi tidak pernah memicu peringatan. Yang terlihat hanyalah bahwa keadaan terasa lebih berat dari sebelumnya.",
+      recommendedAction: "Perlakukan sebagai perubahan proses, bukan hari buruk: bandingkan cara kerja awal dan akhir rentang pada volume yang setara, lalu cari apa yang berubah di antaranya.",
+      evidence: declining.map((trend) => `${trend.label} ${trend.changePct === null ? "" : `${trend.changePct > 0 ? "+" : ""}${trend.changePct.toFixed(0)}%`} dalam ${patterns.windowDays} hari`),
+      confidence: "medium",
+    });
+  }
+
   if (!insights.length) {
     const pain = pains[0];
     add({
@@ -1476,7 +1570,7 @@ function decisionInsights(
   }
 
   const priorityRank: Record<DecisionInsight["priority"], number> = { critical: 3, high: 2, medium: 1 };
-  return insights.sort((a, b) => priorityRank[b.priority] - priorityRank[a.priority]).slice(0, 6);
+  return insights.sort((a, b) => priorityRank[b.priority] - priorityRank[a.priority]).slice(0, 9);
 }
 
 function latestOperationalDate(points: MetricPoint[], validDates: string[]): string | undefined {
@@ -2103,18 +2197,91 @@ function decisionCoverageGaps(
 }
 
 /**
+ * Long-window patterns.
+ *
+ * Read over 90 days rather than the active window, because the questions they
+ * answer — is cancellation a wall or a decision, does the roster follow the
+ * volume, which weekday is structurally different, what actually moved over
+ * months — are invisible inside seven days. No-operation days are excluded, so a
+ * closed Sunday never enters the weekday profile as a quiet Sunday.
+ */
+function operatingPatternLayer(points: MetricPoint[], asOf: string, skipDates: Set<string>): OperatingPatterns {
+  const windowDays = 90;
+  const dates = Array.from({ length: windowDays }, (_, index) => shiftIso(asOf, index - (windowDays - 1))).filter((date) => !skipDates.has(date));
+  const observations: DailyObservation[] = dates.map((date) => ({
+    date,
+    weekday: new Date(`${date}T00:00:00Z`).getUTCDay(),
+    demandBeforeCancel: dailyMetric(points, "outbound_before_cancel", date),
+    demandAfterCancel: dailyMetric(points, "outbound_requested", date),
+    served: dailyMetric(points, "outbound_rts", date),
+    inbound: dailyMetric(points, "actual_inbound", date),
+    productivityPct: dailyDerived(points, "productivity_attainment", date),
+    cancelPct: dailyDerived(points, "cancel_rate", date),
+    mandays: {
+      picker: dailyMetric(points, "actual_picker_mandays", date),
+      packer: dailyMetric(points, "actual_packer_mandays", date),
+      loader: dailyMetric(points, "actual_loader_mandays", date),
+      checker: dailyMetric(points, "actual_checker_mandays", date),
+    },
+  }));
+
+  const trendSeries = [
+    { key: "dcc_accuracy", label: "Akurasi stok", unit: "percent" as const, higherIsBetter: true },
+    { key: "pick_to_pf", label: "Ambil dari pickface", unit: "percent" as const, higherIsBetter: true },
+    { key: "productivity_attainment", label: "Produktivitas picker", unit: "percent" as const, higherIsBetter: true },
+    { key: "demand_fill_rate", label: "Permintaan terlayani", unit: "percent" as const, higherIsBetter: true },
+    { key: "cancel_rate", label: "Permintaan dibatalkan", unit: "percent" as const, higherIsBetter: false },
+    { key: "sla_checker_inbound", label: "SLA checker inbound", unit: "percent" as const, higherIsBetter: true },
+  ].map((item) => ({ ...item, values: dates.map((date) => dailyDerived(points, item.key, date)) }));
+
+  // Device adoption is not an engine rule, so it is read straight from the source.
+  const adoption = { key: "seuic_adoption", label: "Adopsi device SEUIC", unit: "percent" as const, higherIsBetter: true, values: dates.map((date) => { const value = dailyMetric(points, "seuic_adoption", date, "average"); return value === null ? null : value * 100; }) };
+
+  const trends = longHorizonTrend([...trendSeries, adoption]);
+  const effects = improvementWithoutEffect(trends, [
+    { driverKey: "dcc_accuracy", outcomeKey: "pick_to_pf" },
+    { driverKey: "dcc_accuracy", outcomeKey: "productivity_attainment" },
+    { driverKey: "seuic_adoption", outcomeKey: "productivity_attainment" },
+    { driverKey: "pick_to_pf", outcomeKey: "productivity_attainment" },
+  ]);
+
+  return {
+    windowDays: dates.length,
+    cancellation: cancellationDriver(observations),
+    labour: labourElasticity(observations, [
+      { key: "picker", role: "Picker", volumeKey: "served" },
+      { key: "packer", role: "Packer", volumeKey: "served" },
+      { key: "loader", role: "Loader", volumeKey: "served" },
+      { key: "checker", role: "Checker inbound", volumeKey: "inbound" },
+    ]),
+    weekday: weekdayProfile(observations),
+    trends,
+    effects,
+  };
+}
+
+/**
  * The measured starting point for the scenario model. Rates come from the
  * source's own target columns so the simulation never introduces a standard the
  * warehouse has not already agreed to.
  */
-function simulationBaseline(points: MetricPoint[], current: Window): SimulationBaselineInput {
+function simulationBaseline(points: MetricPoint[], current: Window, patterns: OperatingPatterns): SimulationBaselineInput {
   const total = (key: string) => metricValue(points, key, current, "sum").value;
   const rate = (key: string) => metricValue(points, key, current, "average").value;
+  // The busiest weekday, so the model can be run against the day that actually
+  // fails rather than against an average nobody ever works.
+  const peak = [...patterns.weekday.cells].filter((cell) => cell.volumeIndexPct !== null).sort((a, b) => (b.volumeIndexPct ?? 0) - (a.volumeIndexPct ?? 0))[0] ?? null;
   return {
     demandBeforeCancel: total("outbound_before_cancel"),
     cancelPct: normalizePercent("cancel_rate", derived(points, "cancel_rate", current).value),
     served: total("outbound_rts"),
     outboundCapacity: metricValue(points, "outbound_capacity", current, "sum").value,
+    windowDays: current.days,
+    peakDayIndex: peak?.volumeIndexPct ?? null,
+    peakDayLabel: peak?.label ?? null,
+    inboundVolume: total("actual_inbound"),
+    putawayCompletionPct: normalizePercent("putaway_completion", derived(points, "putaway_completion", current).value),
+    pickToPfPct: normalizePercent("pick_to_pf", derived(points, "pick_to_pf", current).value),
     roles: [
       { key: "picker", role: "Picker", mandays: total("actual_picker_mandays"), targetRate: rate("picker_productivity_target"), actualRate: rate("picker_productivity") },
       { key: "packer", role: "Packer", mandays: total("actual_packer_mandays"), targetRate: rate("packer_productivity_target"), actualRate: rate("packer_productivity") },
@@ -2459,6 +2626,8 @@ export function buildAnalysis(
   const zones = capacityZones(warehousePoints, current);
   for (const zone of zones) if (zone.note) dataWarnings.push(`Zona ${zone.zone}: ${zone.note}`);
   const relationships = relationshipSignals(warehousePoints, asOf, noOpsDates);
+  const patterns = operatingPatternLayer(warehousePoints, asOf, noOpsDates);
+  const scenarioBaseline = simulationBaseline(warehousePoints, current, patterns);
   const economics = operationsEconomics(warehousePoints, current, previous, kpis, zones);
   const chains = causalChains(warehousePoints, current, kpis, zones, relationships, economics, pains);
   const semanticCatalog = metricSemanticCatalog(warehousePoints, current);
@@ -2469,7 +2638,6 @@ export function buildAnalysis(
   const chartWindow = visualWindow(current, effectivePeriod);
   const floor = floorStationLayer(warehousePoints, current, previous);
   const statistics = operationsStatistics(warehousePoints, current, chartWindow, noOpsDates);
-  const scenarioBaseline = simulationBaseline(warehousePoints, current);
   const contextGaps = decisionCoverageGaps(warehousePoints, current, kpis, semanticCatalog, threads, zones);
   const activeTrendKeys = division === "All" ? ["forecast_accuracy", "productivity_attainment", "demand_fill_rate", "capacity_utilization", "cancel_rate", "dcc_accuracy"]
     : MODULES.find((module) => module.division === division)?.keys.slice(0, 6) ?? ["forecast_accuracy", "productivity_attainment"];
@@ -2510,12 +2678,13 @@ export function buildAnalysis(
     kpis,
     trends: activeTrendKeys.map((key) => dailyTrend(warehousePoints, key, chartWindow)),
     drivers: driverSignals(kpis),
-    decisionInsights: decisionInsights(kpis, zones, pains, relationships),
+    decisionInsights: decisionInsights(kpis, zones, pains, relationships, patterns),
     operatingPicture: picture,
     operationalThreads: threads,
     floorStations: floor.stations,
     floorBriefing: floor.briefing,
     statistics,
+    operatingPatterns: patterns,
     simulationBaseline: scenarioBaseline,
     incentiveConflicts: incentives,
     knowledgeBase: buildKnowledgeBase(),

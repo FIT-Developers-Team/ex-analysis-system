@@ -2,6 +2,7 @@ import type {
   SimulationBaselineInput,
   SimulationConstraint,
   SimulationDelta,
+  SimulationFunctionImpact,
   SimulationInputs,
   SimulationResult,
   SimulationRoleState,
@@ -180,6 +181,8 @@ export function runSimulation(baseline: SimulationBaselineInput, inputs: Simulat
       scenario: emptyScenario(),
       deltas: [],
       executionYieldPct: 0,
+      functionImpacts: [],
+      peakDayLabel: null,
       notes: [],
       assumptions: [],
     };
@@ -192,6 +195,12 @@ export function runSimulation(baseline: SimulationBaselineInput, inputs: Simulat
   const referenceCeiling = buildScenario(roles, demand, cancelPct, {}, 1, baseline.outboundCapacity, 1, 0).ceiling;
   const executionYield = referenceCeiling > 0 ? Math.min(1, served / referenceCeiling) : 1;
 
+  // A scenario run on the average day hides the day that actually fails. When
+  // peakDay is on, demand is shaped to the busiest weekday's index while the
+  // roster stays where it is — which is exactly the situation a fixed crew meets
+  // every week.
+  const peakFactor = inputs.peakDay && baseline.peakDayIndex !== null && baseline.peakDayIndex > 0 ? baseline.peakDayIndex / 100 : 1;
+
   const multipliers = {
     picker: 1 + inputs.pickerMandaysChange / 100,
     packer: 1 + inputs.packerMandaysChange / 100,
@@ -202,7 +211,7 @@ export function runSimulation(baseline: SimulationBaselineInput, inputs: Simulat
   const baselineScenario = buildScenario(roles, demand, cancelPct, {}, 1, baseline.outboundCapacity, executionYield, pickerBaseline);
   const scenario = buildScenario(
     roles,
-    demand * (1 + inputs.demandChange / 100),
+    demand * (1 + inputs.demandChange / 100) * peakFactor,
     cancelPct + inputs.cancelChange,
     multipliers,
     1 + inputs.processGain / 100,
@@ -281,6 +290,77 @@ export function runSimulation(baseline: SimulationBaselineInput, inputs: Simulat
   }
   if (!notes.length) notes.push("Skenario berada di sekitar kondisi saat ini. Ubah salah satu pengatur untuk melihat batasnya.");
 
+  /* Each function gets a sentence in its own terms. An outbound supervisor and
+     an inbound supervisor read the same scenario and need different things from
+     it, and a single aggregate percentage serves neither. */
+  const functionImpacts: SimulationFunctionImpact[] = [];
+  const demandRatio = baselineScenario.demandAfterCancel > 0 ? scenario.demandAfterCancel / baselineScenario.demandAfterCancel : 1;
+
+  // Inbound moves with outbound volume over time: what ships has to arrive.
+  if (baseline.inboundVolume !== null && baseline.inboundVolume > 0) {
+    const impliedInbound = baseline.inboundVolume * demandRatio;
+    const extra = impliedInbound - baseline.inboundVolume;
+    functionImpacts.push({
+      key: "inbound",
+      fungsi: "Inbound",
+      headline: Math.abs(extra) < 1 ? "Tidak berubah" : `${extra > 0 ? "+" : ""}${Math.round(extra).toLocaleString("id-ID")} unit harus diterima`,
+      detail: Math.abs(extra) < 1
+        ? "Volume keluar tidak berubah, jadi kebutuhan penerimaan juga tidak."
+        : `Barang yang keluar harus masuk lebih dulu. Pada volume ini penerimaan bergerak ke sekitar ${Math.round(impliedInbound).toLocaleString("id-ID")} unit, dan jumlah checker perlu mengikutinya.`,
+      severity: extra > baseline.inboundVolume * 0.15 ? "watch" : "neutral",
+    });
+  }
+
+  // Putaway inherits everything inbound receives; a bigger day lands on it first.
+  if (baseline.putawayCompletionPct !== null) {
+    const pressured = demandRatio > 1.1;
+    functionImpacts.push({
+      key: "inventory",
+      fungsi: "Inventory",
+      headline: pressured ? "Antrean putaway ikut naik" : "Beban putaway relatif tetap",
+      detail: pressured
+        ? `Penyelesaian putaway sekarang ${baseline.putawayCompletionPct.toFixed(1)}%. Volume masuk yang lebih besar menambah antrean di staging, dan palet yang menginap hari ini adalah pickface kosong besok.`
+        : `Penyelesaian putaway ${baseline.putawayCompletionPct.toFixed(1)}% tidak tertekan oleh skenario ini.`,
+      severity: pressured && baseline.putawayCompletionPct < 98 ? "critical" : pressured ? "watch" : "neutral",
+    });
+  }
+
+  // Pickface readiness is what turns extra picker mandays into extra output.
+  if (baseline.pickToPfPct !== null) {
+    const addingPickers = inputs.pickerMandaysChange > 0;
+    const weakPickface = baseline.pickToPfPct < 85;
+    functionImpacts.push({
+      key: "pickface",
+      fungsi: "Replenishment",
+      headline: weakPickface && addingPickers ? "Tambahan picker akan menunggu barang" : weakPickface ? "Pickface belum siap" : "Pickface siap",
+      detail: weakPickface
+        ? `Baru ${baseline.pickToPfPct.toFixed(1)}% pengambilan berasal dari pickface. ${addingPickers ? "Menambah picker tanpa membereskan ini menambah orang yang berjalan ke lokasi cadangan, bukan menambah output." : "Setiap poin di bawah 85% adalah perjalanan tambahan picker."}`
+        : `${baseline.pickToPfPct.toFixed(1)}% pengambilan dari pickface; kesiapan bukan penahan pada skenario ini.`,
+      severity: weakPickface && addingPickers ? "critical" : weakPickface ? "watch" : "good",
+    });
+  }
+
+  // Outbound and dispatch read the constraint directly.
+  functionImpacts.push({
+    key: "outbound",
+    fungsi: "Outbound",
+    headline: scenario.constraint === "labour" ? `${bindingRole?.role ?? "Satu peran"} jadi penahan` : scenario.constraint === "capacity" ? "Batas kapasitas tercapai" : "Kapasitas masih tersisa",
+    detail: scenario.constraint === "labour"
+      ? `Kemampuan ${bindingRole?.role ?? "peran penahan"} ${Math.round(bindingRole?.throughput ?? 0).toLocaleString("id-ID")} unit melawan permintaan ${Math.round(scenario.demandAfterCancel).toLocaleString("id-ID")} unit.`
+      : scenario.constraint === "capacity"
+        ? "Menambah orang tidak menembus batas ini; yang perlu diubah gelombang atau jadwal keberangkatan."
+        : `Sisa kemampuan ${Math.round(Math.max(0, scenario.headroomUnits)).toLocaleString("id-ID")} unit di stasiun terlambat.`,
+    severity: scenario.constraint === "demand" ? "good" : "critical",
+  });
+
+  functionImpacts.push({
+    key: "dispatch",
+    fungsi: "Dispatch",
+    headline: `${Math.round(scenario.served).toLocaleString("id-ID")} unit menuju hub`,
+    detail: `Berubah ${Math.round(scenario.served - baselineScenario.served).toLocaleString("id-ID")} unit dari kondisi sekarang. Jumlah koli dan armada perlu mengikuti angka ini, bukan angka permintaan.`,
+    severity: scenario.served < baselineScenario.served ? "watch" : "neutral",
+  });
+
   return {
     available: true,
     unavailableReason: null,
@@ -288,12 +368,17 @@ export function runSimulation(baseline: SimulationBaselineInput, inputs: Simulat
     scenario,
     deltas,
     executionYieldPct: executionYield * 100,
+    functionImpacts,
+    peakDayLabel: peakFactor !== 1 ? baseline.peakDayLabel : null,
     notes,
     assumptions: [
       `Kapasitas memakai laju yang benar-benar dicapai pada rentang ini: ${roles.map((role) => `${role.role} ${Math.round(role.demonstratedRate).toLocaleString("id-ID")}/manday`).join(", ")}. Targetnya sendiri dipakai untuk menilai pencapaian, bukan untuk memproyeksikan kemampuan.`,
       `Kehilangan yang tidak dimodelkan—pick gagal, barang ditolak, koli hilang—dipertahankan tetap pada ${(executionYield * 100).toLocaleString("id-ID", { maximumFractionDigits: 1 })}% dari kemampuan.`,
       "Sebaran beban per jam tidak tersedia, jadi model ini memakai rata-rata harian. Beban yang menumpuk di satu jam tetap butuh lebih banyak orang pada jam itu.",
       "Perbaikan proses dianggap menaikkan laju semua peran secara merata; kalau perbaikannya hanya di satu stasiun, geser manday peran itu saja.",
+      peakFactor !== 1
+        ? `Permintaan dibentuk mengikuti ${baseline.peakDayLabel ?? "hari tersibuk"} (${Math.round((peakFactor - 1) * 100)}% di atas hari rata-rata), sementara roster dibiarkan seperti sekarang.`
+        : "Dihitung pada hari rata-rata. Nyalakan mode hari puncak untuk melihat hari yang benar-benar gagal.",
     ],
   };
 }

@@ -43,12 +43,15 @@ import {
   InitiativePriorityChart,
   LaborBalanceChart,
   RelationshipChart,
+  HorizonTrendChart,
+  LabourElasticityChart,
   RiskHeatmapChart,
   SimulationCapacityChart,
   SimulationImpactChart,
   TrendChart,
   VolumeFlowChart,
   WarehouseComparisonChart,
+  WeekdayProfileChart,
 } from "@/components/analysis-charts";
 import { KpiCard } from "@/components/kpi-card";
 import { OperationsFlow } from "@/components/operations-flow";
@@ -169,6 +172,70 @@ function SectionHeader({ eyebrow, title, description, action }: { eyebrow: strin
     <div className="section-header">
       <div><span className="eyebrow">{eyebrow}</span><h2>{title}</h2>{description && <p>{description}</p>}</div>
       {action}
+    </div>
+  );
+}
+
+/** Numbered chapter marker. The overview is read out loud in a weekly meeting,
+ *  and a numbered spine is what lets someone say "we are on point three". */
+function StepHeader({ step, title, question }: { step: number; title: string; question: string }) {
+  return (
+    <div className="step-header">
+      <span className="step-header__num">{step}</span>
+      <div><h2>{title}</h2><p>{question}</p></div>
+    </div>
+  );
+}
+
+function PatternPanels({ data }: { data: AnalysisPayload }) {
+  const patterns = data.operatingPatterns;
+  const cancelTone = patterns.cancellation.verdict === "capacity" ? "critical" : patterns.cancellation.verdict === "policy" ? "watch" : "neutral";
+  return (
+    <div className="pattern-grid">
+      <article className={`pattern-card pattern-card--${cancelTone}`}>
+        <header><span className="eyebrow">Pembatalan</span><b>{patterns.windowDays} hari</b></header>
+        <h3>{patterns.cancellation.headline}</h3>
+        <p>{patterns.cancellation.reading}</p>
+        {patterns.cancellation.available && (
+          <div className="pattern-bands">
+            <div><span>Hari sepi</span><strong>{fmtNumber(patterns.cancellation.lowBandPct, 1)}%</strong></div>
+            <div><span>Sedang</span><strong>{fmtNumber(patterns.cancellation.midBandPct, 1)}%</strong></div>
+            <div><span>Hari ramai</span><strong>{fmtNumber(patterns.cancellation.highBandPct, 1)}%</strong></div>
+          </div>
+        )}
+        <footer><ArrowRight size={14} /><span>{patterns.cancellation.action}</span></footer>
+      </article>
+
+      <article className={`pattern-card pattern-card--${patterns.labour.roles.some((role) => role.behaviour === "fixed") ? "critical" : "neutral"}`}>
+        <header><span className="eyebrow">Bentuk roster</span><b>elastisitas</b></header>
+        <h3>{patterns.labour.headline}</h3>
+        <LabourElasticityChart roles={patterns.labour.roles} />
+        <p>{patterns.labour.reading}</p>
+        <footer><ArrowRight size={14} /><span>{patterns.labour.action}</span></footer>
+      </article>
+
+      <article className="pattern-card pattern-card--wide">
+        <header><span className="eyebrow">Pola mingguan</span><b>{patterns.weekday.peakToTroughRatio === null ? "—" : `${patterns.weekday.peakToTroughRatio.toFixed(2)}× puncak ke lembah`}</b></header>
+        <h3>{patterns.weekday.headline}</h3>
+        <WeekdayProfileChart cells={patterns.weekday.cells} />
+        <footer><ArrowRight size={14} /><span>{patterns.weekday.action}</span></footer>
+      </article>
+
+      <article className="pattern-card pattern-card--wide">
+        <header><span className="eyebrow">Gerak jangka panjang</span><b>awal vs akhir rentang</b></header>
+        <h3>Yang bergerak dalam hitungan bulan, bukan hari</h3>
+        <HorizonTrendChart trends={patterns.trends} />
+        {patterns.effects.length > 0 && (
+          <div className="pattern-effects">
+            {patterns.effects.map((effect) => (
+              <p key={`${effect.driverKey}-${effect.outcomeKey}`} className={`pattern-effect pattern-effect--${effect.verdict}`}>
+                {effect.verdict === "delivered" ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
+                <span>{effect.reading}</span>
+              </p>
+            ))}
+          </div>
+        )}
+      </article>
     </div>
   );
 }
@@ -298,6 +365,7 @@ function ExecutiveCockpit({ data, openInitiatives, openFloor, openKnowledge }: {
         <div className="health-gauge"><HealthGauge score={data.health.score} /></div>
       </section>
 
+      <StepHeader step={1} title="Kondisi hari ini" question="Sehat atau tidak, dan di mana tepatnya tidaknya?" />
       <EconomicsBrief data={data} />
       <FloorConstraintStrip data={data} openFloor={openFloor} />
       <OperatingPictureBrief data={data} />
@@ -316,15 +384,22 @@ function ExecutiveCockpit({ data, openInitiatives, openFloor, openKnowledge }: {
       )}
 
       <section className="section-block">
-        <SectionHeader eyebrow="Keputusan" title="Yang perlu dilakukan sekarang" description="Urutannya sudah menimbang volume, orang, SLA, kapasitas, pembatalan, dan inventory." />
-        <div className="insight-grid">{data.decisionInsights.slice(0, 3).map((insight, index) => <InsightCard insight={insight} index={index} key={insight.id} />)}</div>
+        <StepHeader step={2} title="Kenapa begitu" question="Pola apa yang terlihat kalau dibaca 90 hari, bukan 7 hari?" />
+        <PatternPanels data={data} />
       </section>
 
       <section className="section-block">
-        <SectionHeader eyebrow="Angka" title="Yang tidak bisa dijawab satu persen" description="Arah error, hari yang benar-benar aneh, dan berapa orang yang sebenarnya dibutuhkan." action={<button type="button" className="ghost-button" onClick={openKnowledge}>Lihat semua <ChevronRight size={15} /></button>} />
+        <StepHeader step={3} title="Yang tidak bisa dijawab satu angka" question="Arah error, hari yang benar-benar aneh, dan berapa orang yang sebenarnya dibutuhkan." />
+        <div className="step-action"><button type="button" className="ghost-button" onClick={openKnowledge}>Lihat cara hitungnya <ChevronRight size={15} /></button></div>
         <StatisticsReadout data={data} compact />
       </section>
 
+      <section className="section-block">
+        <StepHeader step={4} title="Yang perlu dilakukan sekarang" question="Kalau hanya sempat tiga hal minggu ini, tiga ini." />
+        <div className="insight-grid">{data.decisionInsights.slice(0, 3).map((insight, index) => <InsightCard insight={insight} index={index} key={insight.id} />)}</div>
+      </section>
+
+      <StepHeader step={5} title="Latar belakangnya" question="Angka pendukung untuk pertanyaan yang muncul di meeting." />
       <section className="split-grid split-grid--wide-left">
         <div className="panel chart-panel">
           <SectionHeader eyebrow="8 minggu" title="Risiko per fungsi" description="Warna lebih pekat berarti tekanan lebih tinggi." />
@@ -788,15 +863,16 @@ function RelationshipLab({ data }: { data: AnalysisPayload }) {
   );
 }
 
-const ZERO_SIMULATION: SimulationInputs = { demandChange: 0, cancelChange: 0, processGain: 0, pickerMandaysChange: 0, packerMandaysChange: 0, loaderMandaysChange: 0 };
+const ZERO_SIMULATION: SimulationInputs = { demandChange: 0, cancelChange: 0, processGain: 0, pickerMandaysChange: 0, packerMandaysChange: 0, loaderMandaysChange: 0, peakDay: false };
 
 /** Ready-made questions. Most people do not arrive with six slider positions in
  *  mind; they arrive with a question somebody asked them in a meeting. */
 const SCENARIO_PRESETS: Array<{ id: string; label: string; question: string; inputs: SimulationInputs }> = [
   { id: "no-cancel", label: "Berhenti membatalkan", question: "Kalau pembatalan ditahan ke nol, sanggup tidak?", inputs: { ...ZERO_SIMULATION, cancelChange: -100 } },
-  { id: "peak", label: "Hari puncak", question: "Permintaan naik 25%, siapa yang jebol duluan?", inputs: { ...ZERO_SIMULATION, demandChange: 25 } },
+  { id: "peak", label: "Lonjakan 25%", question: "Permintaan naik 25% di semua hari. Siapa jebol duluan?", inputs: { ...ZERO_SIMULATION, demandChange: 25 } },
   { id: "short-staff", label: "Kurang orang", question: "Picker berkurang 15%, apa yang hilang?", inputs: { ...ZERO_SIMULATION, pickerMandaysChange: -15 } },
   { id: "method", label: "Proses membaik", question: "Pickface siap dan device cukup, laju +10%. Berapa nilainya?", inputs: { ...ZERO_SIMULATION, processGain: 10 } },
+  { id: "peak-day", label: "Hari tersibuk minggu ini", question: "Roster sekarang dihadapkan ke hari terberat dalam seminggu. Bertahan?", inputs: { ...ZERO_SIMULATION, peakDay: true } },
 ];
 
 function fmtScenario(unit: SimulationDelta["unit"], value: number | null): string {
@@ -811,7 +887,7 @@ function ScenarioStudio({ data }: { data: AnalysisPayload }) {
   const [inputs, setInputs] = useState<SimulationInputs>(ZERO_SIMULATION);
   const [activePreset, setActivePreset] = useState<string | null>(null);
   const result = useMemo(() => runSimulation(data.simulationBaseline, inputs), [data.simulationBaseline, inputs]);
-  const set = (key: keyof SimulationInputs, value: number) => { setActivePreset(null); setInputs((current) => ({ ...current, [key]: value })); };
+  const set = (key: keyof SimulationInputs, value: number | boolean) => { setActivePreset(null); setInputs((current) => ({ ...current, [key]: value })); };
   const applyPreset = (preset: (typeof SCENARIO_PRESETS)[number]) => {
     // "Stop cancelling" means down to zero, whatever the current rate happens to be.
     const cancelChange = preset.id === "no-cancel" ? -(data.simulationBaseline.cancelPct ?? 0) : preset.inputs.cancelChange;
@@ -819,7 +895,7 @@ function ScenarioStudio({ data }: { data: AnalysisPayload }) {
     setActivePreset(preset.id);
   };
 
-  const controls: Array<{ key: keyof SimulationInputs; label: string; hint: string; min: number; max: number; suffix: string }> = [
+  const sliders: Array<{ key: Exclude<keyof SimulationInputs, "peakDay">; label: string; hint: string; min: number; max: number; suffix: string }> = [
     { key: "demandChange", label: "Permintaan masuk", hint: "SO sebelum pembatalan", min: -40, max: 50, suffix: "%" },
     { key: "cancelChange", label: "Pembatalan", hint: "Perubahan poin dari tingkat sekarang", min: -30, max: 20, suffix: " poin" },
     { key: "processGain", label: "Laju kerja", hint: "Pickface siap, device cukup, metode lebih baik", min: -20, max: 30, suffix: "%" },
@@ -858,7 +934,7 @@ function ScenarioStudio({ data }: { data: AnalysisPayload }) {
 
       <section className={`scenario-verdict scenario-verdict--${result.scenario.constraint}`} aria-live="polite">
         <div className="scenario-verdict__copy">
-          <span className="eyebrow">Yang membatasi</span>
+          <span className="eyebrow">Yang membatasi{result.peakDayLabel ? ` · dihitung pada hari ${result.peakDayLabel}` : ""}</span>
           <h2>{result.scenario.constraintLabel}</h2>
           <p>{result.notes[0]}</p>
         </div>
@@ -872,7 +948,7 @@ function ScenarioStudio({ data }: { data: AnalysisPayload }) {
       <section className="simulation-layout">
         <div className="panel controls-panel">
           <div className="simulation-baseline"><SlidersHorizontal size={18} /><div><strong>Ubah satu per satu</strong><span>Titik awal = rentang yang sedang dibuka</span></div></div>
-          {controls.map((control) => (
+          {sliders.map((control) => (
             <label className="range-control" key={control.key}>
               <div><span>{control.label}</span><output>{inputs[control.key] > 0 ? "+" : ""}{inputs[control.key]}{control.suffix}</output></div>
               <p>{control.hint}</p>
@@ -880,6 +956,15 @@ function ScenarioStudio({ data }: { data: AnalysisPayload }) {
               <div className="range-bounds"><span>{control.min}</span><span>{control.max}</span></div>
             </label>
           ))}
+          {data.simulationBaseline.peakDayLabel && (
+            <label className="scenario-toggle">
+              <input type="checkbox" checked={inputs.peakDay} onChange={(event) => set("peakDay", event.target.checked)} />
+              <div>
+                <strong>Hitung pada hari tersibuk</strong>
+                <span>{data.simulationBaseline.peakDayLabel} berjalan {fmtNumber((data.simulationBaseline.peakDayIndex ?? 100) - 100, 0)}% di atas hari rata-rata. Roster tetap seperti sekarang.</span>
+              </div>
+            </label>
+          )}
           <button className="secondary-button" onClick={() => { setInputs(ZERO_SIMULATION); setActivePreset(null); }}>Kembali ke kondisi sekarang</button>
         </div>
 
@@ -911,6 +996,20 @@ function ScenarioStudio({ data }: { data: AnalysisPayload }) {
           ))}
         </div>
       </section>
+
+      {result.functionImpacts.length > 0 && (
+        <section className="section-block">
+          <SectionHeader eyebrow="Dampak per fungsi" title="Apa artinya untuk masing-masing tim" description="Satu skenario, lima konsekuensi berbeda. Tiap pemilik fungsi membaca barisnya sendiri." />
+          <div className="impact-grid">
+            {result.functionImpacts.map((impact) => (
+              <article className={`impact-card impact-card--${impact.severity}`} key={impact.key}>
+                <header><span>{impact.fungsi}</span><b>{impact.headline}</b></header>
+                <p>{impact.detail}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="split-grid">
         <div className="panel">

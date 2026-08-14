@@ -191,6 +191,7 @@ export interface AnalysisPayload {
   floorStations: FloorStation[];
   floorBriefing: FloorBriefing;
   statistics: OperationsStatistics;
+  operatingPatterns: OperatingPatterns;
   simulationBaseline: SimulationBaselineInput;
   incentiveConflicts: IncentiveConflict[];
   knowledgeBase: KnowledgeArticle[];
@@ -641,6 +642,9 @@ export interface OperationsStatistics {
   readouts: Array<{ id: string; question: string; answer: string; method: string; caveat: string | null }>;
 }
 
+/** Long-window patterns. Definitions live in lib/analysis/operating-patterns.ts. */
+export type OperatingPatterns = import("@/lib/analysis/operating-patterns").OperatingPatterns;
+
 export interface KnowledgeArticle {
   id: string;
   group: "Istilah" | "Proses" | "Rumus" | "Aturan";
@@ -676,6 +680,8 @@ export interface SimulationInputs {
   pickerMandaysChange: number;
   packerMandaysChange: number;
   loaderMandaysChange: number;
+  /** Run the numbers on the busiest weekday instead of the average day. */
+  peakDay: boolean;
 }
 
 export interface SimulationRoleInput {
@@ -699,6 +705,28 @@ export interface SimulationBaselineInput {
   served: number | null;
   outboundCapacity: number | null;
   roles: SimulationRoleInput[];
+  /** Days in the window, so a per-day view can be shown next to the total. */
+  windowDays: number;
+  /**
+   * Busiest weekday's demand divided by the average day. A scenario run on the
+   * average hides the day that actually fails, so the model reports the peak
+   * day separately rather than pretending the week is flat.
+   */
+  peakDayIndex: number | null;
+  peakDayLabel: string | null;
+  /** Inbound side, for the knock-on into putaway and pickface readiness. */
+  inboundVolume: number | null;
+  putawayCompletionPct: number | null;
+  pickToPfPct: number | null;
+}
+
+/** What the scenario does to each function, stated in that function's own terms. */
+export interface SimulationFunctionImpact {
+  key: string;
+  fungsi: string;
+  headline: string;
+  detail: string;
+  severity: "good" | "watch" | "critical" | "neutral";
 }
 
 export interface SimulationRoleState {
@@ -760,6 +788,10 @@ export interface SimulationResult {
    * main assumption.
    */
   executionYieldPct: number;
+  /** Per-function consequence, so each owner sees their own sentence. */
+  functionImpacts: SimulationFunctionImpact[];
+  /** Set when the run is shaped to the busiest weekday rather than the average. */
+  peakDayLabel: string | null;
   notes: string[];
   assumptions: string[];
 }

@@ -120,6 +120,17 @@ change requires breaking one, say so explicitly rather than quietly relaxing it.
 - **Capacity is projected from demonstrated rate, attainment from target rate.**
   Mixing them up cost a full rebuild: a target-rate capacity model named packing
   as PGS's constraint on a day packers were beating target by 5%.
+- **Long-window patterns answer different questions from the cockpit.** Anything
+  in `operating-patterns.ts` reads 90 days because cancellation drivers, roster
+  elasticity, weekday shape, and multi-month drift are invisible inside seven.
+  Do not recompute them on the active window to make them "consistent".
+- **The same number can mean opposite things.** Cancellation at 9% is a capacity
+  wall at SRG and BIT and a decision at PGS. Any insight that reads a rate
+  without asking what drives it will give three of the four warehouses the wrong
+  instruction.
+- **Dilution is arithmetic, not performance.** Where roster elasticity is near
+  zero, low attainment on quiet days is mechanical. Never route it to a coaching
+  or performance recommendation.
 - **BSC is read, never inferred.** The glossary remarks column is the only source
   of a metric's incentive class. Guessing which metrics carry a bonus is guessing
   at somebody's pay.

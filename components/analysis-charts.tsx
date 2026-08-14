@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import type { CSSProperties } from "react";
 import type { ControlChart } from "@/lib/analysis/operations-math";
+import type { HorizonTrend, RoleElasticity, WeekdayCell } from "@/lib/analysis/operating-patterns";
 import type {
   CapacityHistoryPoint,
   DriverSignal,
@@ -344,6 +345,117 @@ export function ControlChartView({ chart }: { chart: ControlChart }) {
       },
       { name: "Di luar batas", type: "scatter", data: flagged, symbolSize: 11, itemStyle: { color: palette[3], borderColor: "#fff", borderWidth: 2 }, z: 5 },
     ],
+  }} />;
+}
+
+/**
+ * The week's actual shape. Volume as bars against the all-day average, output
+ * and cancellation as lines. The point is to make a single-roster policy look as
+ * wrong as it is: one number cannot serve a Sunday that runs 17% above average
+ * and a Monday that runs 22% below it.
+ */
+export function WeekdayProfileChart({ cells }: { cells: WeekdayCell[] }) {
+  const usable = cells.filter((cell) => cell.volumeIndexPct !== null);
+  return <Chart height={310} option={{
+    animationDuration: 350,
+    tooltip: {
+      ...tooltip,
+      trigger: "axis",
+      axisPointer: { type: "shadow" },
+      formatter: (params: Array<{ dataIndex: number }>) => {
+        const cell = usable[params[0]?.dataIndex ?? 0];
+        return `<strong>${cell.label}</strong> · ${cell.days} hari<br/>Volume ${percent(cell.volumeIndexPct, 0)} dari rata-rata<br/>Pencapaian ${percent(cell.productivityPct, 0)}<br/>Dibatalkan ${percent(cell.cancelPct, 1)}`;
+      },
+    },
+    legend: { top: 0, left: 0, itemWidth: 18, itemHeight: 8, itemGap: 16, textStyle: { color: "#475569", fontSize: 11 } },
+    grid: { left: 52, right: 52, top: 50, bottom: 32 },
+    xAxis: { type: "category", data: usable.map((cell) => cell.label.slice(0, 3)), ...axis },
+    yAxis: [
+      { type: "value", min: 0, max: (value: { max: number }) => Math.max(130, Math.ceil(value.max / 10) * 10), axisLabel: { color: "#475569", fontSize: 11, formatter: "{value}%" }, splitLine: split },
+      { type: "value", min: 0, position: "right", axisLabel: { color: "#475569", fontSize: 11, formatter: "{value}%" }, splitLine: { show: false } },
+    ],
+    series: [
+      {
+        name: "Volume vs rata-rata", type: "bar", barMaxWidth: 30,
+        data: usable.map((cell) => ({
+          value: cell.volumeIndexPct === null ? null : Number(cell.volumeIndexPct.toFixed(1)),
+          // The quietest and busiest days are the two the roster gets wrong, so
+          // they are the two that get a colour.
+          itemStyle: { color: (cell.volumeIndexPct ?? 100) >= 108 ? palette[3] : (cell.volumeIndexPct ?? 100) <= 92 ? palette[2] : "#c8d7fb", borderColor: (cell.volumeIndexPct ?? 100) >= 108 ? "#a83f2c" : (cell.volumeIndexPct ?? 100) <= 92 ? "#a66100" : palette[0], borderWidth: 1, borderRadius: [4, 4, 0, 0] },
+        })),
+        markLine: { symbol: "none", silent: true, data: [{ yAxis: 100 }], lineStyle: { color: "#475569", type: "dashed" }, label: { formatter: "rata-rata", color: "#475569", fontSize: 10 } },
+      },
+      { name: "Pencapaian", type: "line", data: usable.map((cell) => cell.productivityPct === null ? null : Number(cell.productivityPct.toFixed(1))), showSymbol: true, symbolSize: 6, lineStyle: { color: palette[0], width: 2.6 }, itemStyle: { color: palette[0] }, connectNulls: false },
+      { name: "Dibatalkan", type: "line", yAxisIndex: 1, data: usable.map((cell) => cell.cancelPct === null ? null : Number(cell.cancelPct.toFixed(2))), showSymbol: true, symbol: "emptyCircle", symbolSize: 6, lineStyle: { color: palette[2], width: 2.2, type: "dashed" }, itemStyle: { color: palette[2] }, connectNulls: false },
+    ],
+  }} />;
+}
+
+/**
+ * How far each role's roster moves when the volume moves. A bar near 1 tracks
+ * the work; a bar near 0 is a fixed crew. Drawn against the 0.6 line because
+ * that is where the dilution arithmetic starts to bite.
+ */
+export function LabourElasticityChart({ roles }: { roles: RoleElasticity[] }) {
+  const usable = roles.filter((role) => role.elasticity !== null);
+  return <Chart height={Math.max(230, usable.length * 58)} option={{
+    animationDuration: 300,
+    tooltip: {
+      ...tooltip,
+      trigger: "item",
+      formatter: (params: { dataIndex: number }) => {
+        const role = usable[params.dataIndex];
+        return `<strong>${role.role}</strong><br/>Elastisitas ${role.elasticity?.toFixed(2)} · ${role.sampleSize} hari<br/>Hari sepi ${percent(role.quietAttainmentPct, 0)} · hari ramai ${percent(role.busyAttainmentPct, 0)}`;
+      },
+    },
+    grid: { left: 118, right: 76, top: 14, bottom: 34 },
+    xAxis: { type: "value", min: 0, max: 1, axisLabel: { color: "#475569", fontSize: 11, formatter: (value: number) => value.toFixed(1) }, splitLine: split },
+    yAxis: { type: "category", inverse: true, data: usable.map((role) => role.role), axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: "#334155", fontSize: 11, fontWeight: 600 } },
+    series: [{
+      type: "bar", barWidth: 22,
+      data: usable.map((role) => ({
+        value: Number(Math.max(0, role.elasticity ?? 0).toFixed(2)),
+        itemStyle: { color: role.behaviour === "fixed" ? palette[3] : role.behaviour === "partial" ? palette[2] : palette[1], borderColor: role.behaviour === "fixed" ? "#a83f2c" : role.behaviour === "partial" ? "#a66100" : "#0b6e65", borderWidth: 1, borderRadius: [0, 5, 5, 0] },
+        label: { show: true, position: "right", distance: 8, color: "#334155", fontSize: 11, fontWeight: 700, formatter: `${(role.elasticity ?? 0).toFixed(2)}` },
+      })),
+      markLine: { symbol: "none", silent: true, data: [{ xAxis: 0.6 }], lineStyle: { color: "#475569", type: "dashed" }, label: { formatter: "ikut volume", color: "#475569", fontSize: 10 } },
+    }],
+  }} />;
+}
+
+/** What moved over months. Early third against late third, so a single odd week
+ *  at either end cannot invent a trend. */
+export function HorizonTrendChart({ trends }: { trends: HorizonTrend[] }) {
+  const usable = trends.filter((trend) => trend.changePct !== null && trend.direction !== "insufficient");
+  const max = Math.max(20, ...usable.map((trend) => Math.abs(trend.changePct ?? 0)));
+  return <Chart height={Math.max(250, usable.length * 42)} option={{
+    animationDuration: 300,
+    tooltip: {
+      ...tooltip,
+      trigger: "item",
+      formatter: (params: { dataIndex: number }) => {
+        const trend = usable[params.dataIndex];
+        return `<strong>${trend.label}</strong><br/>${percent(trend.earlyValue, 1)} → ${percent(trend.lateValue, 1)}<br/>${trend.direction === "improved" ? "Membaik" : trend.direction === "declined" ? "Memburuk" : "Datar"}`;
+      },
+    },
+    grid: { left: 168, right: 84, top: 12, bottom: 32 },
+    xAxis: { type: "value", min: -max, max, axisLabel: { color: "#475569", fontSize: 11, formatter: "{value}%" }, splitLine: split },
+    yAxis: { type: "category", data: usable.map((trend) => trend.label), axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: "#334155", fontSize: 11, fontWeight: 600, width: 156, overflow: "truncate" } },
+    series: [{
+      type: "bar", barWidth: 16,
+      data: usable.map((trend) => {
+        // Signed by whether it got better, not by whether the number went up:
+        // cancellation rising is a bar to the left even though the value rose.
+        const magnitude = Math.abs(trend.changePct ?? 0);
+        const value = trend.direction === "improved" ? magnitude : trend.direction === "declined" ? -magnitude : 0;
+        return {
+          value: Number(value.toFixed(1)),
+          itemStyle: { color: trend.direction === "improved" ? palette[1] : trend.direction === "declined" ? palette[3] : "#94a3b8", borderColor: trend.direction === "improved" ? "#0b6e65" : trend.direction === "declined" ? "#a83f2c" : "#64748b", borderWidth: 1, borderRadius: value < 0 ? [4, 0, 0, 4] : [0, 4, 4, 0] },
+          label: { show: true, position: value < 0 ? "left" : "right", distance: 7, color: "#334155", fontSize: 11, fontWeight: 700, formatter: `${percent(trend.earlyValue, 0)}→${percent(trend.lateValue, 0)}` },
+        };
+      }),
+      markLine: { symbol: "none", silent: true, data: [{ xAxis: 0 }], lineStyle: { color: "#475569", width: 1.2 } },
+    }],
   }} />;
 }
 
